@@ -12,41 +12,97 @@
             color: #222;
         }
 
-        h1 {
-            margin-bottom: 20px;
-            color: #1f2937;
-        }
-
-        .box {
+        .card {
             background: white;
             padding: 20px;
             border: 1px solid #e5e7eb;
+            margin-bottom: 20px;
             border-radius: 12px;
-            margin-bottom: 25px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        h1, h2 {
+            margin-top: 0;
+        }
+
+        .upload-form {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        input[type="file"] {
+            padding: 10px;
+            background: white;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+        }
+
+        button, .btn-link {
+            padding: 10px 16px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            display: inline-block;
+            border-radius: 8px;
+            text-decoration: none;
+        }
+
+        .primary-btn {
+            background: #2563eb;
+            color: white;
+        }
+
+        .primary-btn:hover {
+            background: #1d4ed8;
+        }
+
+        .dark-btn {
+            background: #111827;
+            color: white;
+        }
+
+        .dark-btn:hover {
+            background: #1f2937;
+        }
+
+        .filter-form {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        select {
+            padding: 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            background: white;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
             background: white;
-            border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border-radius: 12px;
         }
 
         th, td {
-            padding: 14px;
+            padding: 12px;
             border-bottom: 1px solid #e5e7eb;
             text-align: right;
+            vertical-align: middle;
         }
 
         th {
-            background: #111827;
-            color: white;
+            background: #f3f4f6;
+            color: #111827;
         }
 
-        tr:hover {
+        tr:hover td {
             background: #f9fafb;
         }
 
@@ -70,117 +126,211 @@
             font-weight: bold;
         }
 
-        a {
-            text-decoration: none;
-            color: #2563eb;
+        .status-not_invoice {
+            color: #6b7280;
+            font-weight: bold;
         }
 
-        a:hover {
-            text-decoration: underline;
-        }
-
-        button, .download-link {
-            padding: 10px 16px;
-            border: none;
-            background: #111827;
-            color: white;
-            cursor: pointer;
-            text-decoration: none;
+        .score-pill {
             display: inline-block;
-            border-radius: 8px;
-            font-size: 14px;
+            min-width: 70px;
+            text-align: center;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-weight: bold;
         }
 
-        button:hover, .download-link:hover {
-            background: #1f2937;
+        .score-high {
+            background: #dcfce7;
+            color: #166534;
         }
 
-        input[type="file"], select {
-            margin-left: 10px;
-            padding: 8px;
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
+        .score-medium {
+            background: #fef3c7;
+            color: #92400e;
         }
 
-        .top-actions {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-            flex-wrap: wrap;
-            margin-top: 12px;
+        .score-low {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .priority-high {
+            color: #991b1b;
+            font-weight: bold;
+        }
+
+        .priority-medium {
+            color: #92400e;
+            font-weight: bold;
+        }
+
+        .priority-low {
+            color: #166534;
+            font-weight: bold;
+        }
+
+        .fallback-yes {
+            color: #92400e;
+            font-weight: bold;
+        }
+
+        .fallback-no {
+            color: #166534;
+            font-weight: bold;
+        }
+
+        .open-link {
+            color: #2563eb;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .open-link:hover {
+            text-decoration: underline;
         }
 
         .muted {
             color: #6b7280;
-            font-size: 14px;
+        }
+
+        .top-note {
+            margin-top: 10px;
+            color: #374151;
+        }
+
+        .empty-state {
+            padding: 20px;
+            background: #f9fafb;
+            border: 1px dashed #d1d5db;
+            border-radius: 10px;
+            color: #6b7280;
         }
     </style>
 </head>
 <body>
-    <h1>لوحة معالجة المستندات</h1>
-
-    <div class="box">
-        <h2>رفع ملف جديد</h2>
-        <p class="muted">اختر ملف PDF أو صورة ليتم رفعه وتحليله وحفظه في النظام.</p>
-        <form action="/dashboard/upload" method="post" enctype="multipart/form-data">
-            <input type="file" name="file" required>
-            <button type="submit">رفع ومعالجة</button>
-        </form>
+    <div class="card">
+        <h1>لوحة معالجة المستندات</h1>
+        <p class="top-note">
+            يتم الآن ترتيب السجلات بحيث تظهر الحالات التي تحتاج مراجعة وبدرجة ثقة أقل في الأعلى.
+        </p>
     </div>
 
-    <div class="box">
+    <div class="card">
+        <h2>رفع ملف جديد</h2>
+        <form class="upload-form" method="post" action="/dashboard/upload" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".pdf,image/*" required>
+            <button type="submit" class="primary-btn">رفع ومعالجة</button>
+        </form>
+        <p class="muted">اختر ملف PDF أو صورة ليتم رفعه وتحليله وحفظه في النظام.</p>
+    </div>
+
+    <div class="card">
         <h2>تصفية حسب الحالة</h2>
-        <form action="/dashboard" method="get">
+        <form class="filter-form" method="get" action="/dashboard">
             <select name="status">
                 <option value="all" {% if current_status == "all" %}selected{% endif %}>الكل</option>
                 <option value="approved" {% if current_status == "approved" %}selected{% endif %}>معتمد</option>
                 <option value="rejected" {% if current_status == "rejected" %}selected{% endif %}>مرفوض</option>
                 <option value="needs_review" {% if current_status == "needs_review" %}selected{% endif %}>يحتاج مراجعة</option>
                 <option value="valid" {% if current_status == "valid" %}selected{% endif %}>صالح</option>
+                <option value="not_invoice" {% if current_status == "not_invoice" %}selected{% endif %}>ليس فاتورة</option>
             </select>
-            <button type="submit">تطبيق الفلتر</button>
-        </form>
 
-        <div class="top-actions">
-            <a class="download-link" href="/dashboard/download-csv?status={{ current_status }}">
-                تنزيل CSV
-            </a>
-        </div>
+            <button type="submit" class="primary-btn">تطبيق الفلتر</button>
+            <a class="btn-link dark-btn" href="/dashboard/download-csv?status={{ current_status }}">تنزيل CSV</a>
+        </form>
     </div>
 
-    <table>
-        <thead>
-            <tr>
-                <th>المعرف</th>
-                <th>اسم الملف</th>
-                <th>الحالة</th>
-                <th>تاريخ الإنشاء</th>
-                <th>التفاصيل</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for invoice in invoices %}
-            <tr>
-                <td>{{ invoice.id }}</td>
-                <td>{{ invoice.original_filename }}</td>
-                <td class="status-{{ invoice.status }}">
-                    {% if invoice.status == "approved" %}
-                        معتمد
-                    {% elif invoice.status == "rejected" %}
-                        مرفوض
-                    {% elif invoice.status == "needs_review" %}
-                        يحتاج مراجعة
-                    {% elif invoice.status == "valid" %}
-                        صالح
-                    {% else %}
-                        {{ invoice.status }}
-                    {% endif %}
-                </td>
-                <td>{{ invoice.created_at }}</td>
-                <td><a href="/dashboard/invoices/{{ invoice.id }}">فتح</a></td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="card">
+        <h2>قائمة السجلات</h2>
+
+        {% if invoices %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>المعرف</th>
+                        <th>اسم الملف</th>
+                        <th>الحالة</th>
+                        <th>نوع المستند</th>
+                        <th>اسم الجهة</th>
+                        <th>الإجمالي</th>
+                        <th>درجة الثقة</th>
+                        <th>أولوية المراجعة</th>
+                        <th>Fallback</th>
+                        <th>تاريخ الإنشاء</th>
+                        <th>التفاصيل</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for invoice in invoices %}
+                        <tr>
+                            <td>{{ invoice.id }}</td>
+                            <td>{{ invoice.original_filename }}</td>
+                            <td>
+                                <span class="status-{{ invoice.status }}">
+                                    {% if invoice.status == "approved" %}
+                                        معتمد
+                                    {% elif invoice.status == "rejected" %}
+                                        مرفوض
+                                    {% elif invoice.status == "needs_review" %}
+                                        يحتاج مراجعة
+                                    {% elif invoice.status == "valid" %}
+                                        صالح
+                                    {% elif invoice.status == "not_invoice" %}
+                                        ليس فاتورة
+                                    {% else %}
+                                        {{ invoice.status }}
+                                    {% endif %}
+                                </span>
+                            </td>
+                            <td>{{ invoice.document_type or "-" }}</td>
+                            <td>{{ invoice.vendor_name or "-" }}</td>
+                            <td>
+                                {% if invoice.total is not none %}
+                                    {{ invoice.total }} {{ invoice.currency or "" }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if invoice.confidence_score >= 85 %}
+                                    <span class="score-pill score-high">{{ invoice.confidence_score }}%</span>
+                                {% elif invoice.confidence_score >= 60 %}
+                                    <span class="score-pill score-medium">{{ invoice.confidence_score }}%</span>
+                                {% else %}
+                                    <span class="score-pill score-low">{{ invoice.confidence_score }}%</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if invoice.review_priority == "عالية" %}
+                                    <span class="priority-high">{{ invoice.review_priority }}</span>
+                                {% elif invoice.review_priority == "متوسطة" %}
+                                    <span class="priority-medium">{{ invoice.review_priority }}</span>
+                                {% else %}
+                                    <span class="priority-low">{{ invoice.review_priority }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if invoice.used_fallback %}
+                                    <span class="fallback-yes">نعم</span>
+                                {% else %}
+                                    <span class="fallback-no">لا</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ invoice.created_at or "-" }}</td>
+                            <td>
+                                <a class="open-link" href="/dashboard/invoices/{{ invoice.id }}">فتح</a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="empty-state">
+                لا توجد سجلات مطابقة للحالة المختارة.
+            </div>
+        {% endif %}
+    </div>
 </body>
 </html>

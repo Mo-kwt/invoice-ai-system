@@ -60,8 +60,8 @@ def find_date_in_text(text: str):
     text = _clean_text(text)
 
     labeled_patterns = [
-        r"(?:invoice\s*date|credit\s*invoice\s*date|credit\s*inverce\s*date|date|التاريخ|تاريخ)\s*[:\-]?\s*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})",
-        r"(?:invoice\s*date|credit\s*invoice\s*date|credit\s*inverce\s*date|date|التاريخ|تاريخ)\s*[:\-]?\s*([0-9]{4}[\/\-][0-9]{1,2}[\/\-][0-9]{1,2})",
+        r"(?:invoice\s*date|credit\s*invoice\s*date|credit\s*inverce\s*date|date|التاريخ|تاريخ|dt)\s*[:\-]?\s*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})",
+        r"(?:invoice\s*date|credit\s*invoice\s*date|credit\s*inverce\s*date|date|التاريخ|تاريخ|dt)\s*[:\-]?\s*([0-9]{4}[\/\-][0-9]{1,2}[\/\-][0-9]{1,2})",
     ]
 
     for pattern in labeled_patterns:
@@ -71,6 +71,7 @@ def find_date_in_text(text: str):
 
     generic_patterns = [
         r"\b([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{4})\b",
+        r"\b([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2})\b",
         r"\b([0-9]{4}[\/\-][0-9]{1,2}[\/\-][0-9]{1,2})\b",
     ]
 
@@ -117,7 +118,7 @@ def find_invoice_number_in_text(text: str):
     text = _clean_text(text)
 
     labeled_patterns = [
-        r"(?:invoice\s*no|invoice\s*number|inv\s*no|رقم\s*الفاتورة)\s*[:\-#]?\s*([A-Z0-9\-\/]{2,})",
+        r"(?:invoice\s*no|invoice\s*number|inv\s*no|رقم\s*الفاتورة|no)\s*[:\-#]?\s*([A-Z0-9\-\/]{2,})",
         r"(?:credit\s*invoice\s*no|credit\s*note\s*no|credit\s*inverce\s*no)\s*[:\-#]?\s*([A-Z0-9\-\/]{2,})",
     ]
 
@@ -142,7 +143,7 @@ def find_total_in_text(text: str):
     text = _clean_text(text)
 
     labeled_patterns = [
-        r"(?:grand\s*total|total|net|amount|الإجمالي|المجموع|الصافي)\s*[:\-]?\s*([0-9][0-9,\.\s]*)",
+        r"(?:grand\s*total|total|totl|net|amount|الإجمالي|المجموع|الصافي)\s*[:\-]?\s*([0-9][0-9,\.\s]*)",
     ]
 
     for pattern in labeled_patterns:
@@ -165,6 +166,43 @@ def find_total_in_text(text: str):
                 return amount
 
     return None
+
+
+def find_vendor_name_in_weak_text(text: str):
+    text = _clean_text(text)
+    if not text:
+        return None
+
+    lowered = text.lower()
+
+    # نحذف الكلمات الدلالية الواضحة
+    stripped = re.sub(
+        r"\b(inv|invoice|no|date|dt|itm|item|total|totl|kd|kwd)\b[:\-]?",
+        " ",
+        lowered,
+        flags=re.IGNORECASE,
+    )
+    stripped = re.sub(r"\s+", " ", stripped).strip()
+
+    # نحاول التقاط الاسم قبل no أو dt إن وجد
+    match = re.search(
+        r"^(.*?)(?:\bno\b|\bdt\b|[0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})",
+        stripped,
+        flags=re.IGNORECASE,
+    )
+    candidate = match.group(1).strip() if match else stripped
+
+    if not candidate:
+        return None
+
+    # إزالة كلمات عامة إضافية
+    candidate = re.sub(r"\b(inv|invoice)\b", " ", candidate, flags=re.IGNORECASE)
+    candidate = re.sub(r"\s+", " ", candidate).strip()
+
+    if len(candidate) < 5:
+        return None
+
+    return candidate.title()
 
 
 def remove_empty_items(data: dict):
@@ -190,8 +228,12 @@ def remove_empty_items(data: dict):
 def enrich_normalized_invoice_data(extracted_text: str, raw_invoice_data: dict, normalized_invoice_data: dict):
     result = deepcopy(normalized_invoice_data)
 
-    # تنظيف اسم المورد أولًا
     result["vendor_name"] = cleanup_vendor_name(result.get("vendor_name"))
+
+    if not result.get("vendor_name"):
+        weak_vendor_name = find_vendor_name_in_weak_text(extracted_text)
+        if weak_vendor_name:
+            result["vendor_name"] = cleanup_vendor_name(weak_vendor_name)
 
     raw_currency = raw_invoice_data.get("currency")
     if raw_currency:

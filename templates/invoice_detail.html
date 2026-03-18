@@ -176,11 +176,7 @@
             color: #991b1b;
         }
 
-        .error-list, .warning-list {
-            margin-top: 10px;
-        }
-
-        .error-list ul, .warning-list ul {
+        .warning-list ul {
             padding-right: 20px;
             margin-top: 8px;
         }
@@ -217,6 +213,44 @@
         .form-actions {
             grid-column: 1 / -1;
             margin-top: 10px;
+        }
+
+        .score-box {
+            display: inline-block;
+            padding: 8px 14px;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 18px;
+            background: #e5e7eb;
+            color: #111827;
+        }
+
+        .score-high {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .score-medium {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .score-low {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .list-block {
+            margin-top: 14px;
+        }
+
+        .list-block ul {
+            margin-top: 8px;
+            padding-right: 20px;
+        }
+
+        .muted {
+            color: #6b7280;
         }
     </style>
 </head>
@@ -268,6 +302,8 @@
     <div class="card">
         <h2>نتيجة التحقق</h2>
 
+        {% set confidence_score = validation_result.get("confidence_score", 0) %}
+
         {% if validation_result.get("is_valid") and not validation_result.get("needs_review") %}
             <div class="alert success">
                 ✔ المستند سليم ولا يحتاج مراجعة
@@ -282,16 +318,73 @@
             </div>
         {% endif %}
 
-        {% if validation_result.get("warnings") %}
-            <div class="warning-list">
-                <strong>الملاحظات:</strong>
+        <p>
+            <strong class="label">حالة التحقق:</strong>
+            {% if validation_result.get("is_valid") %}
+                <span class="status-approved">صالح</span>
+            {% else %}
+                <span class="status-rejected">غير صالح بالكامل</span>
+            {% endif %}
+        </p>
+
+        <p>
+            <strong class="label">هل يحتاج مراجعة:</strong>
+            {% if validation_result.get("needs_review") %}
+                <span class="status-needs_review">نعم</span>
+            {% else %}
+                <span class="status-approved">لا</span>
+            {% endif %}
+        </p>
+
+        <p>
+            <strong class="label">درجة الثقة:</strong>
+            {% if confidence_score >= 85 %}
+                <span class="score-box score-high">{{ confidence_score }}%</span>
+            {% elif confidence_score >= 60 %}
+                <span class="score-box score-medium">{{ confidence_score }}%</span>
+            {% else %}
+                <span class="score-box score-low">{{ confidence_score }}%</span>
+            {% endif %}
+        </p>
+
+        <div class="list-block">
+            <strong>أسباب المراجعة:</strong>
+            {% if validation_result.get("review_reasons") %}
+                <ul>
+                    {% for reason in validation_result.get("review_reasons") %}
+                        <li>{{ reason }}</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="muted">لا توجد أسباب مراجعة مسجلة.</p>
+            {% endif %}
+        </div>
+
+        <div class="list-block">
+            <strong>الحقول الناقصة:</strong>
+            {% if validation_result.get("missing_fields") %}
+                <ul>
+                    {% for field in validation_result.get("missing_fields") %}
+                        <li>{{ field }}</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="muted">لا توجد حقول أساسية ناقصة.</p>
+            {% endif %}
+        </div>
+
+        <div class="warning-list">
+            <strong>الملاحظات:</strong>
+            {% if validation_result.get("warnings") %}
                 <ul>
                     {% for warn in validation_result.get("warnings") %}
                         <li>{{ warn }}</li>
                     {% endfor %}
                 </ul>
-            </div>
-        {% endif %}
+            {% else %}
+                <p class="muted">لا توجد ملاحظات.</p>
+            {% endif %}
+        </div>
     </div>
 
     <div class="card">
@@ -451,6 +544,57 @@
                 <div class="summary-value">{{ raw_data.get("currency") or "-" }}</div>
             </div>
         </div>
+    </div>
+
+    <div class="card">
+        <h2>معلومات المعالجة</h2>
+
+        <p><strong class="label">هل تم استخدام fallback:</strong>
+            {% if debug_info.get("used_fallback") %}نعم{% else %}لا{% endif %}
+        </p>
+
+        <p><strong class="label">الحقول الناقصة قبل fallback:</strong>
+            {% if debug_info.get("missing_fields_before_fallback") %}
+                {{ debug_info.get("missing_fields_before_fallback") | join(" , ") }}
+            {% else %}
+                لا يوجد
+            {% endif %}
+        </p>
+
+        <p><strong class="label">أسباب تشغيل fallback:</strong>
+            {% if debug_info.get("fallback_reasons") %}
+                {{ debug_info.get("fallback_reasons") | join(" , ") }}
+            {% else %}
+                لا يوجد
+            {% endif %}
+        </p>
+
+        <p><strong class="label">طول النص المستخرج:</strong>
+            {{ debug_info.get("text_length", 0) }}
+        </p>
+
+        <p><strong class="label">Vendor قبل fallback:</strong>
+            {{ debug_info.get("fallback_decision_debug", {}).get("vendor_name_before_fallback", "-") }}
+        </p>
+
+        <p><strong class="label">weak_hits:</strong>
+            {{ debug_info.get("fallback_decision_debug", {}).get("weak_hits", "-") }}
+        </p>
+
+        <p><strong class="label">weak_vendor:</strong>
+            {{ debug_info.get("fallback_decision_debug", {}).get("weak_vendor", "-") }}
+        </p>
+
+        <p><strong class="label">missing_fields_count:</strong>
+            {{ debug_info.get("fallback_decision_debug", {}).get("missing_fields_count", "-") }}
+        </p>
+
+        <p><strong class="label">should_fallback decision:</strong>
+            {{ debug_info.get("fallback_decision_debug", {}).get("should_fallback", "-") }}
+        </p>
+
+        <h3>debug_info الخام</h3>
+        <pre>{{ debug_info }}</pre>
     </div>
 
     <div class="card">

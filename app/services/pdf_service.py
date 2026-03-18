@@ -1,53 +1,50 @@
 import fitz  # PyMuPDF
-from pathlib import Path
 import pytesseract
-from PIL import Image, ImageOps, ImageFilter
+from PIL import Image, ImageFilter, ImageEnhance
 import io
 
 from app.services.arabic_cleanup_service import cleanup_arabic_ocr_text
 
-# عدل هذا المسار إذا كان Tesseract مثبتًا عندك في مكان مختلف
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-
-def preprocess_image_for_ocr(image: Image.Image) -> Image.Image:
+def _preprocess_image_for_ocr(image: Image.Image) -> Image.Image:
+    # تحويل إلى grayscale
     image = image.convert("L")
-    image = ImageOps.autocontrast(image)
 
-    width, height = image.size
-    image = image.resize((width * 2, height * 2))
+    # تحسين التباين
+    enhancer = ImageEnhance.Contrast(image)
+    image = enhancer.enhance(2.0)
 
+    # تحسين الحدة
     image = image.filter(ImageFilter.SHARPEN)
 
-    threshold = 180
-    image = image.point(lambda p: 255 if p > threshold else 0)
+    # threshold (تحويل إلى أبيض وأسود)
+    image = image.point(lambda x: 0 if x < 140 else 255, "1")
 
     return image
 
 
-def extract_text_from_pdf(file_path: str) -> str:
-    path = Path(file_path)
+def extract_text_from_pdf(pdf_path: str) -> str:
+    text_content = ""
 
-    if path.suffix.lower() != ".pdf":
-        return ""
+    doc = fitz.open(pdf_path)
 
-    text_parts = []
+    for page_number in range(len(doc)):
+        page = doc[page_number]
 
-    with fitz.open(file_path) as doc:
-        for page in doc:
-            direct_text = page.get_text().strip()
+        # محاولة استخراج النص مباشرة
+        text = page.get_text()
 
-            if len(direct_text) > 50:
-                cleaned_direct_text = cleanup_arabic_ocr_text(direct_text)
-                text_parts.append(cleaned_direct_text)
-                continue
+        if text and text.strip():
+            text_content += text + "\n"
+        else:
+            # fallback إلى OCR
+            pix = page.get_pixmap()
 
-            matrix = fitz.Matrix(3, 3)
-            pix = page.get_pixmap(matrix=matrix, alpha=False)
             img_bytes = pix.tobytes("png")
-
             image = Image.open(io.BytesIO(img_bytes))
-            image = preprocess_image_for_ocr(image)
+
+            # 🔥 preprocessing هنا
+            image = _preprocess_image_for_ocr(image)
 
             ocr_text = pytesseract.image_to_string(
                 image,
@@ -55,7 +52,11 @@ def extract_text_from_pdf(file_path: str) -> str:
                 config="--oem 3 --psm 6"
             )
 
-            cleaned_ocr_text = cleanup_arabic_ocr_text(ocr_text)
-            text_parts.append(cleaned_ocr_text)
+            text_content += ocr_text + "\n"
 
-    return "\n".join(text_parts).strip()
+    doc.close()
+
+    # تنظيف عربي إضافي
+    text_content = cleanup_arabic_ocr_text(text_content)
+
+    return text_content.strip()

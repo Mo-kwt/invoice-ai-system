@@ -43,6 +43,46 @@ def _clean_optional_float(value: str | None):
         return None
 
 
+def _extract_dashboard_row(record):
+    invoice_data_dict = json.loads(record.invoice_data_json) if record.invoice_data_json else {}
+    validation_result_dict = json.loads(record.validation_result_json) if record.validation_result_json else {}
+
+    normalized_data = invoice_data_dict.get("normalized_invoice_fields", {})
+    classification = invoice_data_dict.get("document_classification", {})
+    debug_info = invoice_data_dict.get("debug_info", {})
+
+    if not normalized_data and isinstance(invoice_data_dict, dict):
+        normalized_data = invoice_data_dict
+
+    confidence_score = validation_result_dict.get("confidence_score", 0)
+    needs_review = validation_result_dict.get("needs_review", False)
+    used_fallback = debug_info.get("used_fallback", False)
+
+    if confidence_score < 60:
+        review_priority = "عالية"
+    elif confidence_score < 85:
+        review_priority = "متوسطة"
+    else:
+        review_priority = "منخفضة"
+
+    return {
+        "id": record.id,
+        "original_filename": record.original_filename,
+        "status": record.status,
+        "created_at": record.created_at.isoformat() if record.created_at else None,
+        "document_type": classification.get("document_type", "-"),
+        "vendor_name": normalized_data.get("vendor_name"),
+        "invoice_number": normalized_data.get("invoice_number"),
+        "invoice_date": normalized_data.get("invoice_date"),
+        "total": normalized_data.get("total"),
+        "currency": normalized_data.get("currency"),
+        "confidence_score": confidence_score,
+        "needs_review": needs_review,
+        "review_priority": review_priority,
+        "used_fallback": used_fallback,
+    }
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard_home(request: Request, status: str = "all"):
     db = SessionLocal()
@@ -56,15 +96,15 @@ def dashboard_home(request: Request, status: str = "all"):
         else:
             records = get_invoice_records_by_status(db, status)
 
-        invoices = [
-            {
-                "id": record.id,
-                "original_filename": record.original_filename,
-                "status": record.status,
-                "created_at": record.created_at.isoformat() if record.created_at else None
-            }
-            for record in records
-        ]
+        invoices = [_extract_dashboard_row(record) for record in records]
+
+        invoices.sort(
+            key=lambda x: (
+                0 if x["needs_review"] else 1,
+                x["confidence_score"],
+                -(x["id"] or 0),
+            )
+        )
 
         return templates.TemplateResponse(
             "index.html",
@@ -89,15 +129,20 @@ def dashboard_upload_invoice(file: UploadFile = File(...)):
             extracted_text = extract_text_from_pdf(saved_path)
 
         ai_result = process_document_with_ai(extracted_text, pdf_path=saved_path)
+
         classification = ai_result["document_classification"]
         invoice_data = ai_result["invoice_data"]
         normalized_invoice_data = ai_result["normalized_invoice_data"]
+        debug_info = ai_result.get("debug_info", {})
 
         if not classification.get("is_invoice_like", False):
             validation_result = {
                 "is_valid": False,
                 "needs_review": False,
-                "warnings": ["The uploaded document is not an invoice."]
+                "warnings": ["The uploaded document is not an invoice."],
+                "confidence_score": 0,
+                "review_reasons": ["Document classified as not invoice"],
+                "missing_fields": [],
             }
             status = "not_invoice"
         else:
@@ -115,6 +160,7 @@ def dashboard_upload_invoice(file: UploadFile = File(...)):
                 "document_classification": classification,
                 "raw_invoice_fields": invoice_data.model_dump(),
                 "normalized_invoice_fields": normalized_invoice_data,
+                "debug_info": debug_info,
             },
             validation_result=validation_result,
             status=status
@@ -139,6 +185,7 @@ def dashboard_invoice_detail(request: Request, record_id: int):
         normalized_data = invoice_data_dict.get("normalized_invoice_fields", {})
         raw_data = invoice_data_dict.get("raw_invoice_fields", {})
         classification = invoice_data_dict.get("document_classification", {})
+        debug_info = invoice_data_dict.get("debug_info", {})
 
         if not normalized_data and not raw_data and isinstance(invoice_data_dict, dict):
             normalized_data = invoice_data_dict
@@ -152,6 +199,7 @@ def dashboard_invoice_detail(request: Request, record_id: int):
                 "raw_data": raw_data,
                 "classification": classification,
                 "validation_result": validation_result_dict,
+                "debug_info": debug_info,
             }
         )
     finally:
@@ -182,6 +230,7 @@ def dashboard_update_invoice(
         normalized_data = invoice_data_dict.get("normalized_invoice_fields", {})
         raw_data = invoice_data_dict.get("raw_invoice_fields", {})
         classification = invoice_data_dict.get("document_classification", {})
+        debug_info = invoice_data_dict.get("debug_info", {})
 
         if not normalized_data:
             normalized_data = {}
@@ -209,6 +258,7 @@ def dashboard_update_invoice(
             "document_classification": classification,
             "raw_invoice_fields": raw_data,
             "normalized_invoice_fields": normalized_data,
+            "debug_info": debug_info,
         }
 
         record.invoice_data_json = json.dumps(updated_invoice_payload, ensure_ascii=False)
@@ -229,7 +279,6 @@ def dashboard_approve_invoice(record_id: int):
         record = update_invoice_status(db, record_id, "approved")
         if not record:
             raise HTTPException(status_code=404, detail="Record not found")
-
         return RedirectResponse(url=f"/dashboard/invoices/{record_id}", status_code=303)
     finally:
         db.close()
@@ -242,7 +291,6 @@ def dashboard_reject_invoice(record_id: int):
         record = update_invoice_status(db, record_id, "rejected")
         if not record:
             raise HTTPException(status_code=404, detail="Record not found")
-
         return RedirectResponse(url=f"/dashboard/invoices/{record_id}", status_code=303)
     finally:
         db.close()
@@ -272,9 +320,7 @@ def download_invoice_json(record_id: int):
         return Response(
             content=json_content,
             media_type="application/json",
-            headers={
-                "Content-Disposition": f'attachment; filename="invoice_{record_id}.json"'
-            }
+            headers={"Content-Disposition": f'attachment; filename="invoice_{record_id}.json"'}
         )
     finally:
         db.close()
@@ -310,14 +356,19 @@ def download_all_invoices_csv(status: str = "all"):
             "tax",
             "discount",
             "total",
-            "currency"
+            "currency",
+            "confidence_score",
+            "needs_review",
+            "used_fallback",
         ])
 
         for record in records:
             invoice_data = json.loads(record.invoice_data_json) if record.invoice_data_json else {}
+            validation_result = json.loads(record.validation_result_json) if record.validation_result_json else {}
 
             normalized = invoice_data.get("normalized_invoice_fields", {})
             classification = invoice_data.get("document_classification", {})
+            debug_info = invoice_data.get("debug_info", {})
 
             if not normalized and isinstance(invoice_data, dict):
                 normalized = invoice_data
@@ -337,6 +388,9 @@ def download_all_invoices_csv(status: str = "all"):
                 normalized.get("discount"),
                 normalized.get("total"),
                 normalized.get("currency"),
+                validation_result.get("confidence_score", 0),
+                validation_result.get("needs_review", False),
+                debug_info.get("used_fallback", False),
             ])
 
         csv_content = output.getvalue()
@@ -345,9 +399,7 @@ def download_all_invoices_csv(status: str = "all"):
         return Response(
             content=csv_content,
             media_type="text/csv",
-            headers={
-                "Content-Disposition": f'attachment; filename="invoices_{status}.csv"'
-            }
+            headers={"Content-Disposition": f'attachment; filename="invoices_{status}.csv"'}
         )
     finally:
         db.close()

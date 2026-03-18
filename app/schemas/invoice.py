@@ -25,3 +25,8 @@ class ValidationResult(BaseModel):
     is_valid: bool
     needs_review: bool
     warnings: List[str] = Field(default_factory=list)
+
+    # جديد
+    confidence_score: float = 0.0
+    review_reasons: List[str] = Field(default_factory=list)
+    missing_fields: List[str] = Field(default_factory=list)
