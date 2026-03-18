@@ -1,4 +1,15 @@
-.env
-.venv/
+# Python
 __pycache__/
 *.pyc
+.venv/
+
+# Local database
+invoice_ai.db
+
+# Uploaded files
+storage/uploads/
+storage/processed/
+storage/exports/
+
+# Environment
+.env

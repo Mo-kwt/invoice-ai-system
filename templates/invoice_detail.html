@@ -47,6 +47,11 @@
             word-break: break-word;
         }
 
+        .missing {
+            color: #b91c1c;
+            font-weight: bold;
+        }
+
         pre {
             background: #111827;
             color: #f9fafb;
@@ -54,6 +59,8 @@
             overflow-x: auto;
             border-radius: 10px;
             line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
         }
 
         a {
@@ -85,6 +92,11 @@
             font-weight: bold;
         }
 
+        .status-not_invoice {
+            color: #6b7280;
+            font-weight: bold;
+        }
+
         .actions {
             display: flex;
             gap: 10px;
@@ -92,7 +104,7 @@
             flex-wrap: wrap;
         }
 
-        button, .download-link {
+        button, .download-link, .save-btn {
             padding: 10px 16px;
             border: none;
             cursor: pointer;
@@ -129,6 +141,15 @@
             background: #1f2937;
         }
 
+        .save-btn {
+            background: #2563eb;
+            color: white;
+        }
+
+        .save-btn:hover {
+            background: #1d4ed8;
+        }
+
         .label {
             color: #6b7280;
         }
@@ -163,43 +184,82 @@
             padding-right: 20px;
             margin-top: 8px;
         }
+
+        .section-note {
+            color: #6b7280;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+
+        .edit-form {
+            display: grid;
+            grid-template-columns: 180px 1fr;
+            gap: 12px 16px;
+            align-items: center;
+            margin-top: 15px;
+        }
+
+        .edit-form label {
+            font-weight: bold;
+            color: #374151;
+        }
+
+        .edit-form input, .edit-form select {
+            padding: 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
+            background: white;
+        }
+
+        .form-actions {
+            grid-column: 1 / -1;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
     <p><a href="/dashboard">العودة إلى اللوحة</a></p>
 
     <div class="card">
-        <h1>تفاصيل السجل رقم {{ invoice.id }}</h1>
-        <p><strong class="label">اسم الملف:</strong> {{ invoice.original_filename }}</p>
+        <h1>تفاصيل السجل رقم {{ record.id }}</h1>
+        <p><strong class="label">اسم الملف:</strong> {{ record.original_filename }}</p>
+
         <p>
             <strong class="label">الحالة:</strong>
-            <span class="status-{{ invoice.status }}">
-                {% if invoice.status == "approved" %}
+            <span class="status-{{ record.status }}">
+                {% if record.status == "approved" %}
                     معتمد
-                {% elif invoice.status == "rejected" %}
+                {% elif record.status == "rejected" %}
                     مرفوض
-                {% elif invoice.status == "needs_review" %}
+                {% elif record.status == "needs_review" %}
                     يحتاج مراجعة
-                {% elif invoice.status == "valid" %}
+                {% elif record.status == "valid" %}
                     صالح
+                {% elif record.status == "not_invoice" %}
+                    ليس فاتورة
                 {% else %}
-                    {{ invoice.status }}
+                    {{ record.status }}
                 {% endif %}
             </span>
         </p>
-        <p><strong class="label">مسار الحفظ:</strong> {{ invoice.saved_path }}</p>
-        <p><strong class="label">تاريخ الإنشاء:</strong> {{ invoice.created_at }}</p>
+
+        <p><strong class="label">نوع المستند:</strong> {{ classification.get("document_type", "-") }}</p>
+        <p><strong class="label">مسار الحفظ:</strong> {{ record.saved_path }}</p>
+        <p><strong class="label">تاريخ الإنشاء:</strong> {{ record.created_at }}</p>
 
         <div class="actions">
-            <form method="post" action="/dashboard/invoices/{{ invoice.id }}/approve">
+            <form method="post" action="/dashboard/invoices/{{ record.id }}/approve">
                 <button type="submit" class="approve-btn">اعتماد</button>
             </form>
 
-            <form method="post" action="/dashboard/invoices/{{ invoice.id }}/reject">
+            <form method="post" action="/dashboard/invoices/{{ record.id }}/reject">
                 <button type="submit" class="reject-btn">رفض</button>
             </form>
 
-            <a class="download-link" href="/dashboard/invoices/{{ invoice.id }}/download-json">
+            <a class="download-link" href="/dashboard/invoices/{{ record.id }}/download-json">
                 تنزيل JSON
             </a>
         </div>
@@ -208,13 +268,11 @@
     <div class="card">
         <h2>نتيجة التحقق</h2>
 
-        {% set validation = invoice.validation_result_dict %}
-
-        {% if validation.get("is_valid") and not validation.get("needs_review") %}
+        {% if validation_result.get("is_valid") and not validation_result.get("needs_review") %}
             <div class="alert success">
                 ✔ المستند سليم ولا يحتاج مراجعة
             </div>
-        {% elif validation.get("needs_review") %}
+        {% elif validation_result.get("needs_review") %}
             <div class="alert warning">
                 ⚠ المستند يحتاج مراجعة
             </div>
@@ -224,22 +282,11 @@
             </div>
         {% endif %}
 
-        {% if validation.get("errors") %}
-            <div class="error-list">
-                <strong>الأخطاء:</strong>
-                <ul>
-                    {% for err in validation.get("errors") %}
-                        <li>{{ err }}</li>
-                    {% endfor %}
-                </ul>
-            </div>
-        {% endif %}
-
-        {% if validation.get("warnings") %}
+        {% if validation_result.get("warnings") %}
             <div class="warning-list">
                 <strong>الملاحظات:</strong>
                 <ul>
-                    {% for warn in validation.get("warnings") %}
+                    {% for warn in validation_result.get("warnings") %}
                         <li>{{ warn }}</li>
                     {% endfor %}
                 </ul>
@@ -248,63 +295,167 @@
     </div>
 
     <div class="card">
-        <h2>ملخص البيانات المستخرجة</h2>
+        <h2>ملخص البيانات المنظفة</h2>
         <div class="summary-grid">
             <div class="summary-item">
                 <div class="summary-label">اسم الجهة</div>
-                <div class="summary-value">{{ invoice.invoice_data_dict.get("vendor_name") or "-" }}</div>
+                <div class="summary-value">
+                    {% if data.get("vendor_name") %}
+                        {{ data.get("vendor_name") }}
+                    {% else %}
+                        <span class="missing">مفقود</span>
+                    {% endif %}
+                </div>
             </div>
 
             <div class="summary-item">
                 <div class="summary-label">رقم المستند</div>
-                <div class="summary-value">{{ invoice.invoice_data_dict.get("invoice_number") or "-" }}</div>
+                <div class="summary-value">
+                    {% if data.get("invoice_number") %}
+                        {{ data.get("invoice_number") }}
+                    {% else %}
+                        <span class="missing">مفقود</span>
+                    {% endif %}
+                </div>
             </div>
 
             <div class="summary-item">
                 <div class="summary-label">التاريخ</div>
-                <div class="summary-value">{{ invoice.invoice_data_dict.get("invoice_date") or "-" }}</div>
+                <div class="summary-value">
+                    {% if data.get("invoice_date") %}
+                        {{ data.get("invoice_date") }}
+                    {% else %}
+                        <span class="missing">مفقود</span>
+                    {% endif %}
+                </div>
             </div>
 
             <div class="summary-item">
                 <div class="summary-label">الإجمالي الفرعي</div>
-                <div class="summary-value">{{ invoice.invoice_data_dict.get("subtotal") or "-" }}</div>
+                <div class="summary-value">
+                    {% if data.get("subtotal") is not none %}
+                        {{ data.get("subtotal") }}
+                    {% else %}
+                        <span class="missing">مفقود</span>
+                    {% endif %}
+                </div>
             </div>
 
             <div class="summary-item">
                 <div class="summary-label">الضريبة</div>
-                <div class="summary-value">{{ invoice.invoice_data_dict.get("tax") or "-" }}</div>
+                <div class="summary-value">
+                    {% if data.get("tax") is not none %}
+                        {{ data.get("tax") }}
+                    {% else %}
+                        <span class="missing">مفقود</span>
+                    {% endif %}
+                </div>
             </div>
 
             <div class="summary-item">
                 <div class="summary-label">الخصم</div>
-                <div class="summary-value">{{ invoice.invoice_data_dict.get("discount") or "-" }}</div>
+                <div class="summary-value">
+                    {% if data.get("discount") is not none %}
+                        {{ data.get("discount") }}
+                    {% else %}
+                        <span class="missing">مفقود</span>
+                    {% endif %}
+                </div>
             </div>
 
             <div class="summary-item">
                 <div class="summary-label">الإجمالي</div>
-                <div class="summary-value">{{ invoice.invoice_data_dict.get("total") or "-" }}</div>
+                <div class="summary-value">
+                    {% if data.get("total") is not none %}
+                        {{ data.get("total") }}
+                    {% else %}
+                        <span class="missing">مفقود</span>
+                    {% endif %}
+                </div>
             </div>
 
             <div class="summary-item">
                 <div class="summary-label">العملة</div>
-                <div class="summary-value">{{ invoice.invoice_data_dict.get("currency") or "-" }}</div>
+                <div class="summary-value">
+                    {% if data.get("currency") %}
+                        {{ data.get("currency") }}
+                    {% else %}
+                        <span class="missing">مفقود</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="section-note">هذه القيم هي النسخة المنظفة بعد التطبيع والمعالجة اللاحقة.</div>
+    </div>
+
+    <div class="card">
+        <h2>تعديل البيانات يدويًا</h2>
+        <form method="post" action="/dashboard/invoices/{{ record.id }}/update">
+            <div class="edit-form">
+                <label for="vendor_name">اسم الجهة</label>
+                <input type="text" id="vendor_name" name="vendor_name" value="{{ data.get('vendor_name', '') }}">
+
+                <label for="invoice_number">رقم المستند</label>
+                <input type="text" id="invoice_number" name="invoice_number" value="{{ data.get('invoice_number', '') }}">
+
+                <label for="invoice_date">التاريخ</label>
+                <input type="text" id="invoice_date" name="invoice_date" value="{{ data.get('invoice_date', '') }}" placeholder="YYYY-MM-DD">
+
+                <label for="subtotal">الإجمالي الفرعي</label>
+                <input type="text" id="subtotal" name="subtotal" value="{{ data.get('subtotal', '') }}">
+
+                <label for="tax">الضريبة</label>
+                <input type="text" id="tax" name="tax" value="{{ data.get('tax', '') }}">
+
+                <label for="discount">الخصم</label>
+                <input type="text" id="discount" name="discount" value="{{ data.get('discount', '') }}">
+
+                <label for="total">الإجمالي</label>
+                <input type="text" id="total" name="total" value="{{ data.get('total', '') }}">
+
+                <label for="currency">العملة</label>
+                <input type="text" id="currency" name="currency" value="{{ data.get('currency', '') }}">
+
+                <div class="form-actions">
+                    <button type="submit" class="save-btn">حفظ التعديلات</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>البيانات الخام قبل التنظيف</h2>
+        <div class="summary-grid">
+            <div class="summary-item">
+                <div class="summary-label">اسم الجهة</div>
+                <div class="summary-value">{{ raw_data.get("vendor_name") or "-" }}</div>
+            </div>
+
+            <div class="summary-item">
+                <div class="summary-label">رقم المستند</div>
+                <div class="summary-value">{{ raw_data.get("invoice_number") or "-" }}</div>
+            </div>
+
+            <div class="summary-item">
+                <div class="summary-label">التاريخ</div>
+                <div class="summary-value">{{ raw_data.get("invoice_date") or "-" }}</div>
+            </div>
+
+            <div class="summary-item">
+                <div class="summary-label">الإجمالي</div>
+                <div class="summary-value">{{ raw_data.get("total") or "-" }}</div>
+            </div>
+
+            <div class="summary-item">
+                <div class="summary-label">العملة</div>
+                <div class="summary-value">{{ raw_data.get("currency") or "-" }}</div>
             </div>
         </div>
     </div>
 
     <div class="card">
-        <h2>البيانات المستخرجة بصيغة JSON</h2>
-        <pre>{{ invoice.invoice_data }}</pre>
-    </div>
-
-    <div class="card">
-        <h2>نتيجة التحقق بصيغة JSON</h2>
-        <pre>{{ invoice.validation_result }}</pre>
-    </div>
-
-    <div class="card">
         <h2>النص المستخرج</h2>
-        <pre>{{ invoice.extracted_text }}</pre>
+        <pre>{{ record.extracted_text }}</pre>
     </div>
 </body>
 </html>

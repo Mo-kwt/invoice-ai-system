@@ -1,46 +1,60 @@
 from app.schemas.invoice import InvoiceData, ValidationResult
 
 
-def validate_invoice_data(data: InvoiceData) -> ValidationResult:
+def validate_invoice_data(invoice: InvoiceData) -> ValidationResult:
     warnings = []
 
-    if not data.vendor_name:
+    # 1) التحقق من الحقول الأساسية
+    if not invoice.vendor_name:
         warnings.append("Vendor name is missing.")
 
-    if not data.invoice_number:
+    if not invoice.invoice_number:
         warnings.append("Invoice number is missing.")
 
-    if not data.invoice_date:
+    if not invoice.invoice_date:
         warnings.append("Invoice date is missing.")
 
-    if data.total is None:
+    if invoice.total is None:
         warnings.append("Total amount is missing.")
 
-    if data.currency is None:
+    if not invoice.currency:
         warnings.append("Currency is missing.")
 
-    expected_total = None
-    if data.subtotal is not None:
-        expected_total = data.subtotal + (data.tax or 0) - (data.discount or 0)
+    # 2) فحص منطقي بسيط للمبالغ
+    subtotal = invoice.subtotal
+    tax = invoice.tax
+    discount = invoice.discount
+    total = invoice.total
 
-    if expected_total is not None and data.total is not None:
-        if round(expected_total, 2) != round(data.total, 2):
+    if subtotal is not None and tax is not None and total is not None:
+        expected_total = subtotal + tax
+        if discount is not None:
+            expected_total -= discount
+
+        if abs(expected_total - total) > 0.01:
             warnings.append(
-                f"Total mismatch: expected {round(expected_total, 2)} but got {round(data.total, 2)}."
+                f"Total mismatch: expected {expected_total:.3f}, got {total:.3f}."
             )
 
-    if data.items:
-        for idx, item in enumerate(data.items, start=1):
-            if item.quantity is not None and item.unit_price is not None and item.total_price is not None:
-                expected_item_total = item.quantity * item.unit_price
-                if round(expected_item_total, 2) != round(item.total_price, 2):
-                    warnings.append(
-                        f"Item {idx} total mismatch: expected {round(expected_item_total, 2)} "
-                        f"but got {round(item.total_price, 2)}."
-                    )
+    # 3) تقييم الذكاء العام للنتيجة
+    critical_missing = 0
 
-    is_valid = len(warnings) == 0
-    needs_review = not is_valid
+    if not invoice.invoice_number:
+        critical_missing += 1
+
+    if not invoice.invoice_date:
+        critical_missing += 1
+
+    if invoice.total is None:
+        critical_missing += 1
+
+    # 4) هل النتيجة صالحة؟
+    # نعتبرها صالحة فقط إذا لم توجد مشاكل حرجة
+    is_valid = critical_missing == 0
+
+    # 5) هل تحتاج مراجعة؟
+    # أي نقص أو تحذير مهم يعني needs_review
+    needs_review = len(warnings) > 0
 
     return ValidationResult(
         is_valid=is_valid,
