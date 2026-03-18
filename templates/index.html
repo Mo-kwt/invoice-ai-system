@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة معالجة المستندات</title>
+    <style>
+        body {
+            font-family: Tahoma, Arial, sans-serif;
+            margin: 40px;
+            background: #f5f7fb;
+            color: #222;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            color: #1f2937;
+        }
+
+        .box {
+            background: white;
+            padding: 20px;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        th, td {
+            padding: 14px;
+            border-bottom: 1px solid #e5e7eb;
+            text-align: right;
+        }
+
+        th {
+            background: #111827;
+            color: white;
+        }
+
+        tr:hover {
+            background: #f9fafb;
+        }
+
+        .status-approved {
+            color: #15803d;
+            font-weight: bold;
+        }
+
+        .status-rejected {
+            color: #b91c1c;
+            font-weight: bold;
+        }
+
+        .status-needs_review {
+            color: #b45309;
+            font-weight: bold;
+        }
+
+        .status-valid {
+            color: #1d4ed8;
+            font-weight: bold;
+        }
+
+        a {
+            text-decoration: none;
+            color: #2563eb;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        button, .download-link {
+            padding: 10px 16px;
+            border: none;
+            background: #111827;
+            color: white;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        button:hover, .download-link:hover {
+            background: #1f2937;
+        }
+
+        input[type="file"], select {
+            margin-left: 10px;
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+        }
+
+        .top-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        .muted {
+            color: #6b7280;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>لوحة معالجة المستندات</h1>
+
+    <div class="box">
+        <h2>رفع ملف جديد</h2>
+        <p class="muted">اختر ملف PDF أو صورة ليتم رفعه وتحليله وحفظه في النظام.</p>
+        <form action="/dashboard/upload" method="post" enctype="multipart/form-data">
+            <input type="file" name="file" required>
+            <button type="submit">رفع ومعالجة</button>
+        </form>
+    </div>
+
+    <div class="box">
+        <h2>تصفية حسب الحالة</h2>
+        <form action="/dashboard" method="get">
+            <select name="status">
+                <option value="all" {% if current_status == "all" %}selected{% endif %}>الكل</option>
+                <option value="approved" {% if current_status == "approved" %}selected{% endif %}>معتمد</option>
+                <option value="rejected" {% if current_status == "rejected" %}selected{% endif %}>مرفوض</option>
+                <option value="needs_review" {% if current_status == "needs_review" %}selected{% endif %}>يحتاج مراجعة</option>
+                <option value="valid" {% if current_status == "valid" %}selected{% endif %}>صالح</option>
+            </select>
+            <button type="submit">تطبيق الفلتر</button>
+        </form>
+
+        <div class="top-actions">
+            <a class="download-link" href="/dashboard/download-csv?status={{ current_status }}">
+                تنزيل CSV
+            </a>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>المعرف</th>
+                <th>اسم الملف</th>
+                <th>الحالة</th>
+                <th>تاريخ الإنشاء</th>
+                <th>التفاصيل</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for invoice in invoices %}
+            <tr>
+                <td>{{ invoice.id }}</td>
+                <td>{{ invoice.original_filename }}</td>
+                <td class="status-{{ invoice.status }}">
+                    {% if invoice.status == "approved" %}
+                        معتمد
+                    {% elif invoice.status == "rejected" %}
+                        مرفوض
+                    {% elif invoice.status == "needs_review" %}
+                        يحتاج مراجعة
+                    {% elif invoice.status == "valid" %}
+                        صالح
+                    {% else %}
+                        {{ invoice.status }}
+                    {% endif %}
+                </td>
+                <td>{{ invoice.created_at }}</td>
+                <td><a href="/dashboard/invoices/{{ invoice.id }}">فتح</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>

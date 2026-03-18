@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تفاصيل المستند</title>
+    <style>
+        body {
+            font-family: Tahoma, Arial, sans-serif;
+            margin: 40px;
+            background: #f5f7fb;
+            color: #222;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border: 1px solid #e5e7eb;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            margin-top: 15px;
+        }
+
+        .summary-item {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 12px;
+        }
+
+        .summary-label {
+            color: #6b7280;
+            font-size: 13px;
+            margin-bottom: 6px;
+        }
+
+        .summary-value {
+            font-weight: bold;
+            color: #111827;
+            word-break: break-word;
+        }
+
+        pre {
+            background: #111827;
+            color: #f9fafb;
+            padding: 15px;
+            overflow-x: auto;
+            border-radius: 10px;
+            line-height: 1.6;
+        }
+
+        a {
+            text-decoration: none;
+            color: #2563eb;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .status-approved {
+            color: #15803d;
+            font-weight: bold;
+        }
+
+        .status-rejected {
+            color: #b91c1c;
+            font-weight: bold;
+        }
+
+        .status-needs_review {
+            color: #b45309;
+            font-weight: bold;
+        }
+
+        .status-valid {
+            color: #1d4ed8;
+            font-weight: bold;
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        button, .download-link {
+            padding: 10px 16px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            display: inline-block;
+            border-radius: 8px;
+        }
+
+        .approve-btn {
+            background: #15803d;
+            color: white;
+        }
+
+        .approve-btn:hover {
+            background: #166534;
+        }
+
+        .reject-btn {
+            background: #b91c1c;
+            color: white;
+        }
+
+        .reject-btn:hover {
+            background: #991b1b;
+        }
+
+        .download-link {
+            background: #111827;
+            color: white;
+            text-decoration: none;
+        }
+
+        .download-link:hover {
+            background: #1f2937;
+        }
+
+        .label {
+            color: #6b7280;
+        }
+
+        .alert {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            font-weight: bold;
+        }
+
+        .success {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .error-list, .warning-list {
+            margin-top: 10px;
+        }
+
+        .error-list ul, .warning-list ul {
+            padding-right: 20px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <p><a href="/dashboard">العودة إلى اللوحة</a></p>
+
+    <div class="card">
+        <h1>تفاصيل السجل رقم {{ invoice.id }}</h1>
+        <p><strong class="label">اسم الملف:</strong> {{ invoice.original_filename }}</p>
+        <p>
+            <strong class="label">الحالة:</strong>
+            <span class="status-{{ invoice.status }}">
+                {% if invoice.status == "approved" %}
+                    معتمد
+                {% elif invoice.status == "rejected" %}
+                    مرفوض
+                {% elif invoice.status == "needs_review" %}
+                    يحتاج مراجعة
+                {% elif invoice.status == "valid" %}
+                    صالح
+                {% else %}
+                    {{ invoice.status }}
+                {% endif %}
+            </span>
+        </p>
+        <p><strong class="label">مسار الحفظ:</strong> {{ invoice.saved_path }}</p>
+        <p><strong class="label">تاريخ الإنشاء:</strong> {{ invoice.created_at }}</p>
+
+        <div class="actions">
+            <form method="post" action="/dashboard/invoices/{{ invoice.id }}/approve">
+                <button type="submit" class="approve-btn">اعتماد</button>
+            </form>
+
+            <form method="post" action="/dashboard/invoices/{{ invoice.id }}/reject">
+                <button type="submit" class="reject-btn">رفض</button>
+            </form>
+
+            <a class="download-link" href="/dashboard/invoices/{{ invoice.id }}/download-json">
+                تنزيل JSON
+            </a>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>نتيجة التحقق</h2>
+
+        {% set validation = invoice.validation_result_dict %}
+
+        {% if validation.get("is_valid") and not validation.get("needs_review") %}
+            <div class="alert success">
+                ✔ المستند سليم ولا يحتاج مراجعة
+            </div>
+        {% elif validation.get("needs_review") %}
+            <div class="alert warning">
+                ⚠ المستند يحتاج مراجعة
+            </div>
+        {% else %}
+            <div class="alert error">
+                ✖ توجد مشاكل في المستند
+            </div>
+        {% endif %}
+
+        {% if validation.get("errors") %}
+            <div class="error-list">
+                <strong>الأخطاء:</strong>
+                <ul>
+                    {% for err in validation.get("errors") %}
+                        <li>{{ err }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+
+        {% if validation.get("warnings") %}
+            <div class="warning-list">
+                <strong>الملاحظات:</strong>
+                <ul>
+                    {% for warn in validation.get("warnings") %}
+                        <li>{{ warn }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>ملخص البيانات المستخرجة</h2>
+        <div class="summary-grid">
+            <div class="summary-item">
+                <div class="summary-label">اسم الجهة</div>
+                <div class="summary-value">{{ invoice.invoice_data_dict.get("vendor_name") or "-" }}</div>
+            </div>
+
+            <div class="summary-item">
+                <div class="summary-label">رقم المستند</div>
+                <div class="summary-value">{{ invoice.invoice_data_dict.get("invoice_number") or "-" }}</div>
+            </div>
+
+            <div class="summary-item">
+                <div class="summary-label">التاريخ</div>
+                <div class="summary-value">{{ invoice.invoice_data_dict.get("invoice_date") or "-" }}</div>
+            </div>
+
+            <div class="summary-item">
+                <div class="summary-label">الإجمالي الفرعي</div>
+                <div class="summary-value">{{ invoice.invoice_data_dict.get("subtotal") or "-" }}</div>
+            </div>
+
+            <div class="summary-item">
+                <div class="summary-label">الضريبة</div>
+                <div class="summary-value">{{ invoice.invoice_data_dict.get("tax") or "-" }}</div>
+            </div>
+
+            <div class="summary-item">
+                <div class="summary-label">الخصم</div>
+                <div class="summary-value">{{ invoice.invoice_data_dict.get("discount") or "-" }}</div>
+            </div>
+
+            <div class="summary-item">
+                <div class="summary-label">الإجمالي</div>
+                <div class="summary-value">{{ invoice.invoice_data_dict.get("total") or "-" }}</div>
+            </div>
+
+            <div class="summary-item">
+                <div class="summary-label">العملة</div>
+                <div class="summary-value">{{ invoice.invoice_data_dict.get("currency") or "-" }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>البيانات المستخرجة بصيغة JSON</h2>
+        <pre>{{ invoice.invoice_data }}</pre>
+    </div>
+
+    <div class="card">
+        <h2>نتيجة التحقق بصيغة JSON</h2>
+        <pre>{{ invoice.validation_result }}</pre>
+    </div>
+
+    <div class="card">
+        <h2>النص المستخرج</h2>
+        <pre>{{ invoice.extracted_text }}</pre>
+    </div>
+</body>
+</html>
