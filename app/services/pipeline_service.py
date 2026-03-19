@@ -190,7 +190,7 @@ def _compute_review_status(
     validation_result = validation_obj.model_dump()
 
     field_review_flags = debug_info.get("field_review_flags", []) or []
-    
+
     critical_flags = {
         "invoice_number_missing",
         "invoice_number_missing_but_candidate_exists",
@@ -211,10 +211,30 @@ def _compute_review_status(
         field_review_flags=field_review_flags,
     )
 
-    print("DEBUG_PIPELINE_SCORE_AFTER:", adjusted_confidence_score)
+    suspicious_total = False
+    if normalized_invoice_data.get("total") is not None:
+        no_items = not normalized_invoice_data.get("items")
+        no_date = not normalized_invoice_data.get("invoice_date")
+        used_fallback = debug_info.get("used_fallback", False)
+        used_vision = debug_info.get("used_vision_fallback", False)
+        text_length = debug_info.get("text_length", 0)
+
+        if (
+            no_items
+            and no_date
+            and used_fallback
+            and used_vision
+            and text_length < 1000
+        ):
+            suspicious_total = True
+
+    if suspicious_total:
+        adjusted_confidence_score = min(adjusted_confidence_score, 65.0)
+
     final_needs_review = (
         validation_result.get("needs_review", False)
         or needs_review_from_fields
+        or suspicious_total
         or adjusted_confidence_score < 75
     )
 
@@ -225,6 +245,9 @@ def _compute_review_status(
     ]
     if additional_field_review_flags:
         review_reasons.extend(additional_field_review_flags)
+
+    if suspicious_total and "total_low_confidence_due_to_weak_ocr" not in review_reasons:
+        review_reasons.append("total_low_confidence_due_to_weak_ocr")
 
     validation_result["confidence_score"] = adjusted_confidence_score
     validation_result["needs_review"] = final_needs_review
@@ -258,7 +281,6 @@ def process_uploaded_invoice(
     status = "processing"
 
     try:
-        # STEP 1: text extraction + render first page image
         step = _start_step(
             db=db,
             run_id=run.id,
@@ -291,7 +313,6 @@ def process_uploaded_invoice(
         run.status = "text_extracted"
         db.commit()
 
-        # STEP 2: ai_processing
         step = _start_step(
             db=db,
             run_id=run.id,
@@ -335,7 +356,6 @@ def process_uploaded_invoice(
         run.classification_json = _json_dumps(classification)
         db.commit()
 
-        # STEP 3: validation
         step = _start_step(
             db=db,
             run_id=run.id,

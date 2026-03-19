@@ -39,14 +39,41 @@ You are extracting invoice fields from an invoice image.
 Important rules:
 - Return JSON only.
 - The document may be Arabic, English, mixed, or handwritten.
-- Prefer fields that are visually visible in the image even if OCR text is weak.
+- Read directly from the image first. Use OCR text only as secondary support.
 - Do not invent values.
-- If invoice number or invoice date are not readable enough, return null.
-- Do not confuse phone numbers with invoice numbers.
+- If a field is not readable enough, return null.
+- Do not confuse phone numbers, customer numbers, reference numbers, or order numbers with invoice_number.
 - Do not translate vendor_name.
-- If Arabic vendor name is visible, prefer Arabic.
-- If total is clearly visible near Total / Amount / المبلغ / الإجمالي, extract it.
-- Items may be empty if not readable.
+- If Arabic and English vendor names are both visible, prefer the Arabic official organization name.
+- Vendor name is usually in the top header area of the invoice.
+- Invoice number and invoice date are usually in the upper or middle header area.
+- Total must be the final payable amount, not a line amount.
+
+For total extraction:
+- Prefer the final payable amount shown in the bottom summary area of the invoice.
+- Prefer values near labels such as:
+  grand total, net total, final total, total due,
+  الإجمالي النهائي, الإجمالي الكلي, المجموع النهائي, صافي الإجمالي, المبلغ الإجمالي, فقط
+- A plain "total" may be valid only if it clearly refers to the final summary amount.
+- Do NOT confuse total with:
+  subtotal, tax, VAT, discount, unit price, rate, qty, quantity, item total, line total
+  الضريبة، الخصم، السعر، الكمية، إجمالي السطر، الإجمالي الجزئي
+- If several amounts are visible, choose the final bottom summary amount only.
+- If the image does not clearly show a final payable total, return null for total.
+
+For vendor extraction:
+- Look first at the top header/logo area.
+- Prefer the printed company or establishment name, not address text, street text, or customer text.
+
+For invoice number extraction:
+- Prefer values near labels like:
+  invoice no, invoice number, inv no, رقم الفاتورة, فاتورة رقم
+- Reject phone numbers and money amounts.
+
+For invoice date extraction:
+- Prefer values near:
+  invoice date, date, تاريخ الفاتورة, التاريخ
+- Do not confuse with due date, delivery date, ship date, or print date.
 
 Current OCR text:
 {current_text[:4000]}
@@ -73,6 +100,13 @@ Return JSON exactly in this shape:
     }}
   ]
 }}
+
+Final check before answering:
+- Is vendor_name actually visible in the top header?
+- Is invoice_number visually readable and not a phone/reference number?
+- Is invoice_date visually readable?
+- Is total the final payable amount at the bottom, not subtotal or line amount?
+- If unsure, return null instead of guessing.
 """.strip()
 
     response = client.chat.completions.create(

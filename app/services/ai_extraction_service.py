@@ -77,12 +77,35 @@ def _safe_json_loads(text: str):
         return None
 
 
-def _merge_invoice_data(base_data: dict, fallback_data: dict) -> dict:
+def _has_meaningful_value(value) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, list):
+        return len(value) > 0
+    return True
+
+
+def _merge_invoice_data(
+    base_data: dict,
+    fallback_data: dict,
+    prefer_override_fields: set[str] | None = None,
+) -> dict:
     merged = dict(base_data)
+    prefer_override_fields = prefer_override_fields or set()
+
     for key, value in fallback_data.items():
         base_value = merged.get(key)
+
+        if key in prefer_override_fields:
+            if _has_meaningful_value(value):
+                merged[key] = value
+            continue
+
         if base_value in (None, "", []):
             merged[key] = value
+
     return merged
 
 
@@ -1040,9 +1063,12 @@ def process_document_with_ai(text: str, pdf_path: Optional[str] = None) -> dict:
             current_data=final_normalized_data,
         )
 
+        print("DEBUG_VISION_RESULT:", vision_invoice_data.model_dump())
+
         merged_data = _merge_invoice_data(
             base_data=final_invoice_data.model_dump(),
             fallback_data=vision_invoice_data.model_dump(),
+            prefer_override_fields={"total"},
         )
 
         final_invoice_data = InvoiceData(**merged_data)

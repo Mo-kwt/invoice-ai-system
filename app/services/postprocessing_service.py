@@ -76,6 +76,59 @@ DATE_NEGATIVE_LABELS = [
     r"posting\s*date",
 ]
 
+TOTAL_STRONG_LABELS = [
+    r"grand\s*total",
+    r"net\s*total",
+    r"final\s*total",
+    r"total\s*due",
+    r"amount\s*due",
+    r"الإجمالي\s*النهائي",
+    r"الإجمالي\s*الكلي",
+    r"المجموع\s*النهائي",
+    r"صافي\s*الإجمالي",
+    r"المبلغ\s*الإجمالي",
+]
+
+TOTAL_MEDIUM_LABELS = [
+    r"(?<!sub)total",
+    r"الإجمالي",
+    r"المجموع",
+    r"الصافي",
+    r"المبلغ",
+]
+
+TOTAL_NEGATIVE_LABELS = [
+    r"subtotal",
+    r"sub\s*total",
+    r"tax",
+    r"vat",
+    r"discount",
+    r"qty",
+    r"quantity",
+    r"unit\s*price",
+    r"price",
+    r"rate",
+    r"line\s*total",
+    r"item\s*total",
+    r"unit",
+    r"الوحدة",
+    r"الكمية",
+    r"السعر",
+    r"سعر",
+    r"الضريبة",
+    r"الخصم",
+    r"الإجمالي\s*الجزئي",
+    r"المجموع\s*الجزئي",
+]
+
+TOTAL_CURRENCY_HINTS = [
+    r"\bkwd\b",
+    r"\bkd\b",
+    r"\bk\.d\.?\b",
+    r"د\.?\s*ك",
+    r"دينار",
+]
+
 
 def _clean_text(text: str) -> str:
     if not text:
@@ -578,30 +631,219 @@ def find_invoice_number_in_text(text: str):
     return result.get("value")
 
 
-def find_total_in_text(text: str):
+def _clean_total_candidate_text(value: str) -> str:
+    value = normalize_digits(value or "")
+    value = value.strip()
+    value = re.sub(r"[^\d,\.\-\s]", " ", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value
+
+
+def _has_total_negative_context(context: str) -> bool:
+    lowered = (context or "").lower()
+    for pattern in TOTAL_NEGATIVE_LABELS:
+        if re.search(pattern, lowered, flags=re.IGNORECASE):
+            return True
+    return False
+
+
+def _has_total_currency_hint(context: str) -> bool:
+    lowered = (context or "").lower()
+    for pattern in TOTAL_CURRENCY_HINTS:
+        if re.search(pattern, lowered, flags=re.IGNORECASE):
+            return True
+    return False
+
+
+def _is_fragmented_total_candidate(raw_value: str) -> bool:
+    raw_value = raw_value or ""
+    normalized = re.sub(r"\s+", " ", raw_value).strip()
+
+    if "." in normalized or "," in normalized:
+        return False
+
+    if re.search(r"\d[\s\-]+\d[\s\-]+\d", normalized):
+        return True
+
+    return False
+
+
+def _is_probable_phone_like_total(raw_value: str, context: str) -> bool:
+    digits = re.sub(r"\D", "", raw_value or "")
+    lowered_context = (context or "").lower()
+
+    if any(token in lowered_context for token in ["tel", "phone", "mobile", "fax"]):
+        return True
+
+    return 7 <= len(digits) <= 12 and "." not in (raw_value or "") and "," not in (raw_value or "")
+
+
+def collect_total_candidates(text: str):
     text = _clean_text(text)
-    labeled_patterns = [
-        r"(?:grand\s*total|total|totl|net|amount|الإجمالي|المجموع|الصافي)\s*[:\-]?\s*([0-9][0-9,\.\s]*)",
-    ]
-    for pattern in labeled_patterns:
-        matches = re.findall(pattern, text, flags=re.IGNORECASE)
-        for candidate in matches:
-            amount = normalize_amount(candidate)
-            if amount is not None:
-                return amount
+    if not text:
+        return []
 
-    currency_amount_patterns = [
-        r"([0-9][0-9,\.\s]*)\s*(?:KWD|KD|K\.D\.?)",
-        r"(?:KWD|KD|K\.D\.?)\s*([0-9][0-9,\.\s]*)",
-    ]
-    for pattern in currency_amount_patterns:
-        matches = re.findall(pattern, text, flags=re.IGNORECASE)
-        for candidate in matches:
-            amount = normalize_amount(candidate)
-            if amount is not None:
-                return amount
+    candidates = []
+    seen = set()
 
-    return None
+    label_groups = [
+        ("strong_label", "|".join(TOTAL_STRONG_LABELS)),
+        ("medium_label", "|".join(TOTAL_MEDIUM_LABELS)),
+    ]
+
+    amount_pattern = r"(?P<value>[0-9][0-9,\.\-\s]{0,18})"
+
+    for label_type, label_pattern in label_groups:
+        pattern = rf"(?P<label>{label_pattern})\s*[:\-]?\s*{amount_pattern}"
+        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+            raw_value = _clean_total_candidate_text(match.group("value"))
+            amount = normalize_amount(raw_value)
+            if amount is None:
+                continue
+
+            context = _extract_context_window(text, match.start(), match.end(), window=90)
+            dedupe_key = (round(float(amount), 3), match.group("label").lower(), match.start("value"))
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+
+            candidates.append(
+                {
+                    "raw_value": raw_value,
+                    "value": amount,
+                    "label": match.group("label"),
+                    "label_type": label_type,
+                    "context": context,
+                    "position": match.start("value"),
+                    "position_ratio": round(match.start("value") / max(len(text), 1), 4),
+                    "score": 0,
+                    "reasons": [],
+                }
+            )
+
+    currency_patterns = [
+        rf"{amount_pattern}\s*(?:KWD|KD|K\.D\.?|د\.?\s*ك)",
+        rf"(?:KWD|KD|K\.D\.?|د\.?\s*ك)\s*{amount_pattern}",
+    ]
+
+    for pattern in currency_patterns:
+        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+            raw_value = _clean_total_candidate_text(match.group("value"))
+            amount = normalize_amount(raw_value)
+            if amount is None:
+                continue
+
+            context = _extract_context_window(text, match.start(), match.end(), window=90)
+            dedupe_key = (round(float(amount), 3), "currency_hint", match.start("value"))
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+
+            candidates.append(
+                {
+                    "raw_value": raw_value,
+                    "value": amount,
+                    "label": "currency_hint",
+                    "label_type": "currency_hint",
+                    "context": context,
+                    "position": match.start("value"),
+                    "position_ratio": round(match.start("value") / max(len(text), 1), 4),
+                    "score": 0,
+                    "reasons": [],
+                }
+            )
+
+    return candidates
+
+
+def score_total_candidate(candidate):
+    if not candidate:
+        return candidate
+
+    working = deepcopy(candidate)
+    raw_value = working.get("raw_value", "")
+    context = working.get("context", "")
+    score = 0
+    reasons = []
+
+    label_type = working.get("label_type")
+    if label_type == "strong_label":
+        score += 50
+        reasons.append("strong_total_label")
+    elif label_type == "medium_label":
+        score += 28
+        reasons.append("medium_total_label")
+    elif label_type == "currency_hint":
+        score += 10
+        reasons.append("currency_hint")
+
+    if _has_total_currency_hint(context):
+        score += 6
+        reasons.append("currency_nearby")
+
+    if _has_total_negative_context(context):
+        score -= 35
+        reasons.append("negative_context")
+
+    if _is_fragmented_total_candidate(raw_value):
+        score -= 40
+        reasons.append("fragmented_number")
+
+    if _is_probable_phone_like_total(raw_value, context):
+        score -= 45
+        reasons.append("phone_like_number")
+
+    if "." in raw_value or "," in raw_value:
+        score += 8
+        reasons.append("decimal_or_grouped_amount")
+
+    position_ratio = working.get("position_ratio", 1.0)
+    if position_ratio >= 0.55:
+        score += 8
+        reasons.append("late_document_position")
+    elif position_ratio >= 0.35:
+        score += 4
+        reasons.append("mid_late_document_position")
+
+    amount = working.get("value")
+    if amount is not None:
+        if amount <= 0:
+            score -= 50
+            reasons.append("non_positive_amount")
+        elif amount < 0.1:
+            score -= 20
+            reasons.append("tiny_amount")
+        elif amount > 1000000:
+            score -= 35
+            reasons.append("unreasonably_large_amount")
+
+    score = _clamp_score(score)
+    working["score"] = score
+    working["reasons"] = reasons
+    return working
+
+
+def select_best_total(candidates):
+    scored_candidates = [score_total_candidate(c) for c in candidates]
+    scored_candidates = sorted(
+        scored_candidates,
+        key=lambda c: (c.get("score", 0), c.get("position", 0)),
+        reverse=True,
+    )
+
+    if not scored_candidates:
+        return None
+
+    best = scored_candidates[0]
+    if best.get("score", 0) < 35:
+        return None
+
+    return best.get("value")
+
+
+def find_total_in_text(text: str):
+    candidates = collect_total_candidates(text)
+    return select_best_total(candidates)
 
 
 def find_vendor_name_in_weak_text(text: str):

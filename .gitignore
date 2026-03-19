@@ -13,3 +13,5 @@ storage/exports/
 
 # Environment
 .env
+
+*.db
