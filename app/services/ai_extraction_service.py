@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from typing import Optional
 
 from openai import OpenAI
@@ -12,6 +13,7 @@ from app.prompts import (
 from app.services.document_classifier_service import classify_document
 from app.services.normalization_service import normalize_invoice_data
 from app.services.postprocessing_service import enrich_normalized_invoice_data
+from app.services.vision_extraction_service import extract_invoice_data_from_image
 
 client = OpenAI(api_key=settings.openai_api_key)
 
@@ -71,6 +73,10 @@ def _is_weak_vendor_name(vendor_name: Optional[str]) -> bool:
         "totl",
         "kd",
         "kwd",
+        "مبلغ",
+        "المبلغ",
+        "السادة",
+        "التوقيع",
     }
 
     if vendor_name.lower() in weak_tokens:
@@ -79,30 +85,92 @@ def _is_weak_vendor_name(vendor_name: Optional[str]) -> bool:
     return False
 
 
+def _count_keyword_hits(text: str, keywords: list[str]) -> int:
+    lowered = (text or "").lower()
+    return sum(1 for token in keywords if token.lower() in lowered)
+
+
 def _looks_like_weak_invoice_text(text: str) -> bool:
-    clean_text = (text or "").strip().lower()
+    clean_text = (text or "").strip()
+    lowered_text = clean_text.lower()
+
     if not clean_text:
         return False
 
-    weak_invoice_tokens = [
-        "inv",
+    english_tokens = [
         "invoice",
+        "inv",
+        "total",
+        "subtotal",
+        "tax",
+        "discount",
+        "amount",
+        "balance",
+        "rate",
+        "qty",
+        "item",
         "no",
         "dt",
-        "itm",
-        "item",
-        "totl",
-        "total",
         "kd",
         "kwd",
+        "sign",
+        "receiver",
+        "receivers sign",
     ]
 
-    hits = sum(1 for token in weak_invoice_tokens if token in clean_text)
+    arabic_tokens = [
+        "فاتورة",
+        "مؤسسة",
+        "شركة",
+        "المبلغ",
+        "اجمالي",
+        "الإجمالي",
+        "المجموع",
+        "السادة",
+        "الحساب",
+        "التوقيع",
+        "استلم",
+        "رقم",
+        "التاريخ",
+        "الكمية",
+        "الصنف",
+    ]
 
-    has_digits = any(ch.isdigit() for ch in clean_text)
+    english_hits = _count_keyword_hits(lowered_text, english_tokens)
+    arabic_hits = _count_keyword_hits(clean_text, arabic_tokens)
+
+    digit_count = sum(ch.isdigit() for ch in clean_text)
+    arabic_count = sum(1 for ch in clean_text if "\u0600" <= ch <= "\u06FF")
+    alpha_count = sum(ch.isalpha() for ch in clean_text)
+
+    has_total_like = (
+        "total" in lowered_text
+        or "المبلغ" in clean_text
+        or "اجمالي" in clean_text
+        or "الإجمالي" in clean_text
+    )
+
+    has_company_like = (
+        "مؤسسة" in clean_text
+        or "شركة" in clean_text
+        or "est" in lowered_text
+    )
+
     has_date_like = "/" in clean_text or "-" in clean_text
+    has_phone_like = digit_count >= 7
 
-    return hits >= 3 and has_digits and has_date_like
+    strong_signal_count = sum([
+        1 if english_hits >= 2 else 0,
+        1 if arabic_hits >= 2 else 0,
+        1 if has_total_like else 0,
+        1 if has_company_like else 0,
+        1 if has_date_like else 0,
+        1 if has_phone_like else 0,
+        1 if arabic_count >= 10 else 0,
+        1 if alpha_count >= 30 else 0,
+    ])
+
+    return strong_signal_count >= 3
 
 
 def _should_use_fallback(text: str, normalized_data: dict) -> tuple[bool, list[str], dict]:
@@ -122,17 +190,24 @@ def _should_use_fallback(text: str, normalized_data: dict) -> tuple[bool, list[s
         reasons.append("very_short_extracted_text")
     elif text_length < 120:
         reasons.append("short_extracted_text")
+    elif text_length < 500:
+        reasons.append("medium_length_ocr_text")
 
     if weak_vendor:
         reasons.append("weak_vendor_name")
 
-    weak_ocr_tokens = ["inv", "dt", "itm", "totl", "no"]
-    weak_hits = sum(1 for token in weak_ocr_tokens if token in lowered_text)
+    weak_ocr_tokens = [
+        "inv", "dt", "itm", "totl", "no",
+        "المبلغ", "مؤسسة", "شركة", "التوقيع", "السادة", "الحساب", "total"
+    ]
+    weak_hits = sum(1 for token in weak_ocr_tokens if token in lowered_text or token in clean_text)
+
     if weak_hits >= 2:
         reasons.append("weak_ocr_style_text")
 
     digit_count = sum(ch.isdigit() for ch in clean_text)
     alpha_count = sum(ch.isalpha() for ch in clean_text)
+    arabic_count = sum(1 for ch in clean_text if "\u0600" <= ch <= "\u06FF")
 
     if alpha_count > 0 and digit_count > 0 and text_length < 100:
         reasons.append("very_compact_mixed_text")
@@ -140,12 +215,19 @@ def _should_use_fallback(text: str, normalized_data: dict) -> tuple[bool, list[s
     if text_length < 140 and weak_vendor:
         reasons.append("short_text_with_weak_vendor")
 
+    if text_length >= 140 and text_length < 800 and len(missing_fields) >= 2:
+        reasons.append("ocr_text_with_missing_core_fields")
+
+    if arabic_count >= 20 and len(missing_fields) >= 2:
+        reasons.append("arabic_ocr_text_with_missing_fields")
+
     should_fallback = (
         len(missing_fields) > 0
         or text_length < 80
-        or (text_length < 80 and weak_hits >= 2)
         or (text_length < 100 and "very_compact_mixed_text" in reasons)
         or (text_length < 140 and weak_vendor)
+        or (text_length < 800 and len(missing_fields) >= 2)
+        or (arabic_count >= 20 and len(missing_fields) >= 2)
     )
 
     decision_debug = {
@@ -157,10 +239,38 @@ def _should_use_fallback(text: str, normalized_data: dict) -> tuple[bool, list[s
         "missing_fields_list": missing_fields,
         "alpha_count": alpha_count,
         "digit_count": digit_count,
+        "arabic_count": arabic_count,
         "should_fallback": should_fallback,
     }
 
     return should_fallback, reasons, decision_debug
+
+
+def _should_use_vision_fallback(
+    pdf_path: Optional[str],
+    classification: dict,
+    normalized_data: dict,
+    text: str,
+) -> tuple[bool, list[str]]:
+    reasons = []
+
+    if not pdf_path:
+        return False, reasons
+
+    missing_fields = _find_missing_fields(normalized_data)
+    text_length = len((text or "").strip())
+
+    if len(missing_fields) >= 2:
+        reasons.append("missing_core_fields_after_text_extraction")
+
+    if classification.get("is_invoice_like", False) and len(missing_fields) >= 2:
+        reasons.append("invoice_like_but_text_fields_incomplete")
+
+    if text_length >= 150 and len(missing_fields) >= 2:
+        reasons.append("ocr_text_present_but_not_sufficient")
+
+    should_use = len(reasons) > 0
+    return should_use, reasons
 
 
 def extract_invoice_data_from_text(text: str) -> InvoiceData:
@@ -213,10 +323,11 @@ Missing fields:
 
 Instructions:
 - Return JSON only.
-- This OCR text may be short, noisy, or partially damaged.
+- This OCR text may be short, noisy, partially damaged, mixed Arabic/English, and contain recognition errors.
 - Try to improve weak fields, not only missing fields.
-- If vendor_name appears in both Arabic and English, prefer the Arabic official name.
-- If the text is weak, infer carefully from labels like inv, no, dt, total, kd, kwd.
+- If vendor_name appears in both Arabic and English, prefer the Arabic official name if it exists clearly in the OCR text.
+- The document may still be an invoice even if the OCR text is messy.
+- Infer carefully from labels like inv, no, dt, total, kd, kwd, مؤسسة, شركة, المبلغ, الإجمالي, التوقيع.
 - Keep existing correct values when possible.
 - If a field cannot be found confidently, return null for that field.
 - Extract only these fields:
@@ -249,8 +360,6 @@ Document text:
 
 
 def process_document_with_ai(text: str, pdf_path: Optional[str] = None) -> dict:
-    _ = pdf_path
-
     classification = classify_document(text)
     weak_invoice_override = _looks_like_weak_invoice_text(text)
 
@@ -261,8 +370,10 @@ def process_document_with_ai(text: str, pdf_path: Optional[str] = None) -> dict:
             "normalized_invoice_data": {},
             "debug_info": {
                 "used_fallback": False,
+                "used_vision_fallback": False,
                 "missing_fields_before_fallback": [],
                 "fallback_reasons": [],
+                "vision_fallback_reasons": [],
                 "fallback_decision_debug": {},
                 "text_length": len(text.strip()) if text else 0,
                 "weak_invoice_override": False,
@@ -273,7 +384,8 @@ def process_document_with_ai(text: str, pdf_path: Optional[str] = None) -> dict:
         classification = {
             **classification,
             "is_invoice_like": True,
-            "document_type": classification.get("document_type") or "invoice",
+            "document_type": "invoice",
+            "invoice_likelihood": max(classification.get("invoice_likelihood", 0.0), 0.55),
             "override_reason": "weak_invoice_text_pattern",
         }
 
@@ -289,6 +401,8 @@ def process_document_with_ai(text: str, pdf_path: Optional[str] = None) -> dict:
     final_invoice_data = invoice_data
     final_normalized_data = normalized_invoice_data
     used_fallback = False
+    used_vision_fallback = False
+    vision_fallback_reasons = []
 
     if needs_ai_fallback:
         used_fallback = True
@@ -306,6 +420,31 @@ def process_document_with_ai(text: str, pdf_path: Optional[str] = None) -> dict:
         final_invoice_data = InvoiceData(**merged_data)
         final_normalized_data = normalize_invoice_data(final_invoice_data)
 
+    should_use_vision, vision_fallback_reasons = _should_use_vision_fallback(
+        pdf_path=pdf_path,
+        classification=classification,
+        normalized_data=final_normalized_data,
+        text=text,
+    )
+
+    if should_use_vision and pdf_path:
+        image_path = str(Path(pdf_path).with_suffix(".png"))
+
+        vision_invoice_data = extract_invoice_data_from_image(
+            image_path=image_path,
+            current_text=text,
+            current_data=final_normalized_data,
+        )
+
+        merged_data = _merge_invoice_data(
+            base_data=final_invoice_data.model_dump(),
+            fallback_data=vision_invoice_data.model_dump(),
+        )
+
+        final_invoice_data = InvoiceData(**merged_data)
+        final_normalized_data = normalize_invoice_data(final_invoice_data)
+        used_vision_fallback = True
+
     enriched_invoice_data = enrich_normalized_invoice_data(
         extracted_text=text,
         raw_invoice_data=final_invoice_data.model_dump(),
@@ -314,8 +453,10 @@ def process_document_with_ai(text: str, pdf_path: Optional[str] = None) -> dict:
 
     debug_info = {
         "used_fallback": used_fallback,
+        "used_vision_fallback": used_vision_fallback,
         "missing_fields_before_fallback": missing_fields_before_fallback,
         "fallback_reasons": fallback_reasons,
+        "vision_fallback_reasons": vision_fallback_reasons,
         "fallback_decision_debug": fallback_decision_debug,
         "text_length": len(text.strip()) if text else 0,
         "weak_invoice_override": weak_invoice_override,

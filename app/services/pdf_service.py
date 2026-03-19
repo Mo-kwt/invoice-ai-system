@@ -1,26 +1,40 @@
-import fitz  # PyMuPDF
-import pytesseract
-from PIL import Image, ImageFilter, ImageEnhance
 import io
+from pathlib import Path
+
+import fitz  # PyMuPDF
+from PIL import Image, ImageFilter, ImageEnhance
 
 from app.services.arabic_cleanup_service import cleanup_arabic_ocr_text
+from app.services.ocr_service import extract_text_from_image
 
 
 def _preprocess_image_for_ocr(image: Image.Image) -> Image.Image:
-    # تحويل إلى grayscale
     image = image.convert("L")
 
-    # تحسين التباين
     enhancer = ImageEnhance.Contrast(image)
-    image = enhancer.enhance(2.0)
+    image = enhancer.enhance(1.8)
 
-    # تحسين الحدة
     image = image.filter(ImageFilter.SHARPEN)
 
-    # threshold (تحويل إلى أبيض وأسود)
-    image = image.point(lambda x: 0 if x < 140 else 255, "1")
+    image = image.point(lambda x: 0 if x < 160 else 255, "L")
 
     return image
+
+
+def render_first_page_to_image(pdf_path: str, output_path: str) -> str:
+    doc = fitz.open(pdf_path)
+    try:
+        page = doc[0]
+        matrix = fitz.Matrix(2.5, 2.5)
+        pix = page.get_pixmap(matrix=matrix, alpha=False)
+
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        pix.save(str(output_file))
+
+        return str(output_file)
+    finally:
+        doc.close()
 
 
 def extract_text_from_pdf(pdf_path: str) -> str:
@@ -28,35 +42,31 @@ def extract_text_from_pdf(pdf_path: str) -> str:
 
     doc = fitz.open(pdf_path)
 
-    for page_number in range(len(doc)):
-        page = doc[page_number]
+    try:
+        for page_number in range(len(doc)):
+            page = doc[page_number]
 
-        # محاولة استخراج النص مباشرة
-        text = page.get_text()
+            text = page.get_text()
 
-        if text and text.strip():
-            text_content += text + "\n"
-        else:
-            # fallback إلى OCR
-            pix = page.get_pixmap()
+            if text and text.strip():
+                text_content += text + "\n"
+                continue
+
+            matrix = fitz.Matrix(2.5, 2.5)
+            pix = page.get_pixmap(matrix=matrix, alpha=False)
 
             img_bytes = pix.tobytes("png")
             image = Image.open(io.BytesIO(img_bytes))
 
-            # 🔥 preprocessing هنا
             image = _preprocess_image_for_ocr(image)
 
-            ocr_text = pytesseract.image_to_string(
-                image,
-                lang="ara+eng",
-                config="--oem 3 --psm 6"
-            )
+            ocr_text = extract_text_from_image(image)
 
             text_content += ocr_text + "\n"
 
-    doc.close()
+    finally:
+        doc.close()
 
-    # تنظيف عربي إضافي
     text_content = cleanup_arabic_ocr_text(text_content)
 
     return text_content.strip()

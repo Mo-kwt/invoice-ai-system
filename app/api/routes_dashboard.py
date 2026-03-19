@@ -11,14 +11,18 @@ from app.db.crud import (
     get_all_invoice_records,
     get_invoice_record_by_id,
     update_invoice_status,
-    create_invoice_record,
     get_invoice_records_by_status,
+    get_processing_run_by_id,
+    get_processing_steps_by_run_id,
+    create_review_action,
+    get_review_actions_by_run_id,
 )
 from app.services.file_service import save_upload_file
-from app.services.pdf_service import extract_text_from_pdf
-from app.services.ai_extraction_service import process_document_with_ai
-from app.services.validation_service import validate_invoice_data
+from app.services.pipeline_service import process_uploaded_invoice
+from app.services.integration_service import append_invoice_to_excel
+from app.services.export_service import build_canonical_invoice_payload
 from app.schemas.invoice import InvoiceData
+from app.services.validation_service import validate_invoice_data
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -43,9 +47,18 @@ def _clean_optional_float(value: str | None):
         return None
 
 
+def _safe_json_loads(value):
+    if not value:
+        return {}
+    try:
+        return json.loads(value)
+    except Exception:
+        return {}
+
+
 def _extract_dashboard_row(record):
-    invoice_data_dict = json.loads(record.invoice_data_json) if record.invoice_data_json else {}
-    validation_result_dict = json.loads(record.validation_result_json) if record.validation_result_json else {}
+    invoice_data_dict = _safe_json_loads(record.invoice_data_json)
+    validation_result_dict = _safe_json_loads(record.validation_result_json)
 
     normalized_data = invoice_data_dict.get("normalized_invoice_fields", {})
     classification = invoice_data_dict.get("document_classification", {})
@@ -80,6 +93,19 @@ def _extract_dashboard_row(record):
         "needs_review": needs_review,
         "review_priority": review_priority,
         "used_fallback": used_fallback,
+    }
+
+
+def _build_record_snapshot(record):
+    return {
+        "record_id": record.id,
+        "document_id": record.document_id,
+        "run_id": record.run_id,
+        "original_filename": record.original_filename,
+        "saved_path": record.saved_path,
+        "status": record.status,
+        "invoice_data": _safe_json_loads(record.invoice_data_json),
+        "validation_result": _safe_json_loads(record.validation_result_json),
     }
 
 
@@ -124,46 +150,11 @@ def dashboard_upload_invoice(file: UploadFile = File(...)):
     try:
         saved_path = save_upload_file(file)
 
-        extracted_text = ""
-        if file.filename.lower().endswith(".pdf"):
-            extracted_text = extract_text_from_pdf(saved_path)
-
-        ai_result = process_document_with_ai(extracted_text, pdf_path=saved_path)
-
-        classification = ai_result["document_classification"]
-        invoice_data = ai_result["invoice_data"]
-        normalized_invoice_data = ai_result["normalized_invoice_data"]
-        debug_info = ai_result.get("debug_info", {})
-
-        if not classification.get("is_invoice_like", False):
-            validation_result = {
-                "is_valid": False,
-                "needs_review": False,
-                "warnings": ["The uploaded document is not an invoice."],
-                "confidence_score": 0,
-                "review_reasons": ["Document classified as not invoice"],
-                "missing_fields": [],
-            }
-            status = "not_invoice"
-        else:
-            normalized_invoice_obj = InvoiceData(**normalized_invoice_data)
-            validation_obj = validate_invoice_data(normalized_invoice_obj)
-            validation_result = validation_obj.model_dump()
-            status = "needs_review" if validation_obj.needs_review else "valid"
-
-        create_invoice_record(
+        process_uploaded_invoice(
             db=db,
             original_filename=file.filename,
             saved_path=saved_path,
-            extracted_text=extracted_text,
-            invoice_data={
-                "document_classification": classification,
-                "raw_invoice_fields": invoice_data.model_dump(),
-                "normalized_invoice_fields": normalized_invoice_data,
-                "debug_info": debug_info,
-            },
-            validation_result=validation_result,
-            status=status
+            mime_type=file.content_type,
         )
 
         return RedirectResponse(url="/dashboard", status_code=303)
@@ -179,8 +170,8 @@ def dashboard_invoice_detail(request: Request, record_id: int):
         if not record:
             raise HTTPException(status_code=404, detail="Record not found")
 
-        invoice_data_dict = json.loads(record.invoice_data_json) if record.invoice_data_json else {}
-        validation_result_dict = json.loads(record.validation_result_json) if record.validation_result_json else {}
+        invoice_data_dict = _safe_json_loads(record.invoice_data_json)
+        validation_result_dict = _safe_json_loads(record.validation_result_json)
 
         normalized_data = invoice_data_dict.get("normalized_invoice_fields", {})
         raw_data = invoice_data_dict.get("raw_invoice_fields", {})
@@ -189,6 +180,65 @@ def dashboard_invoice_detail(request: Request, record_id: int):
 
         if not normalized_data and not raw_data and isinstance(invoice_data_dict, dict):
             normalized_data = invoice_data_dict
+
+        processing_run = None
+        processing_steps = []
+        fallback_reasons = []
+        review_actions = []
+
+        if record.run_id:
+            processing_run = get_processing_run_by_id(db, record.run_id)
+            processing_steps = get_processing_steps_by_run_id(db, record.run_id)
+            review_actions = get_review_actions_by_run_id(db, record.run_id)
+
+            if processing_run and processing_run.fallback_reasons_json:
+                try:
+                    fallback_reasons = json.loads(processing_run.fallback_reasons_json)
+                except Exception:
+                    fallback_reasons = []
+
+        step_rows = []
+        for step in processing_steps:
+            step_rows.append(
+                {
+                    "id": step.id,
+                    "step_name": step.step_name,
+                    "status": step.status,
+                    "started_at": step.started_at.isoformat() if step.started_at else None,
+                    "finished_at": step.finished_at.isoformat() if step.finished_at else None,
+                    "error_message": step.error_message,
+                    "input_snapshot": _safe_json_loads(step.input_snapshot_json),
+                    "output_snapshot": _safe_json_loads(step.output_snapshot_json),
+                }
+            )
+
+        run_view = None
+        if processing_run:
+            run_view = {
+                "id": processing_run.id,
+                "document_id": processing_run.document_id,
+                "status": processing_run.status,
+                "pipeline_version": processing_run.pipeline_version,
+                "model_name": processing_run.model_name,
+                "used_fallback": processing_run.used_fallback,
+                "fallback_reasons": fallback_reasons,
+                "started_at": processing_run.started_at.isoformat() if processing_run.started_at else None,
+                "finished_at": processing_run.finished_at.isoformat() if processing_run.finished_at else None,
+            }
+
+        review_rows = []
+        for action in review_actions:
+            review_rows.append(
+                {
+                    "id": action.id,
+                    "action_type": action.action_type,
+                    "actor": action.actor,
+                    "note": action.note,
+                    "created_at": action.created_at.isoformat() if action.created_at else None,
+                    "before_data": _safe_json_loads(action.before_json),
+                    "after_data": _safe_json_loads(action.after_json),
+                }
+            )
 
         return templates.TemplateResponse(
             "invoice_detail.html",
@@ -200,6 +250,9 @@ def dashboard_invoice_detail(request: Request, record_id: int):
                 "classification": classification,
                 "validation_result": validation_result_dict,
                 "debug_info": debug_info,
+                "run_view": run_view,
+                "step_rows": step_rows,
+                "review_rows": review_rows,
             }
         )
     finally:
@@ -224,13 +277,13 @@ def dashboard_update_invoice(
         if not record:
             raise HTTPException(status_code=404, detail="Record not found")
 
-        invoice_data_dict = json.loads(record.invoice_data_json) if record.invoice_data_json else {}
-        validation_result_dict = json.loads(record.validation_result_json) if record.validation_result_json else {}
+        before_snapshot = _build_record_snapshot(record)
 
-        normalized_data = invoice_data_dict.get("normalized_invoice_fields", {})
+        invoice_data_dict = _safe_json_loads(record.invoice_data_json)
         raw_data = invoice_data_dict.get("raw_invoice_fields", {})
         classification = invoice_data_dict.get("document_classification", {})
         debug_info = invoice_data_dict.get("debug_info", {})
+        normalized_data = invoice_data_dict.get("normalized_invoice_fields", {})
 
         if not normalized_data:
             normalized_data = {}
@@ -266,6 +319,20 @@ def dashboard_update_invoice(
         record.status = status
 
         db.commit()
+        db.refresh(record)
+
+        after_snapshot = _build_record_snapshot(record)
+
+        create_review_action(
+            db=db,
+            document_id=record.document_id,
+            run_id=record.run_id,
+            action_type="edited",
+            before_data=before_snapshot,
+            after_data=after_snapshot,
+            actor="reviewer",
+            note="Manual field update from dashboard",
+        )
 
         return RedirectResponse(url=f"/dashboard/invoices/{record_id}", status_code=303)
     finally:
@@ -276,9 +343,40 @@ def dashboard_update_invoice(
 def dashboard_approve_invoice(record_id: int):
     db = SessionLocal()
     try:
+        record = get_invoice_record_by_id(db, record_id)
+        if not record:
+            raise HTTPException(status_code=404, detail="Record not found")
+
+        before_snapshot = _build_record_snapshot(record)
+
         record = update_invoice_status(db, record_id, "approved")
         if not record:
             raise HTTPException(status_code=404, detail="Record not found")
+
+        db.refresh(record)
+        after_snapshot = _build_record_snapshot(record)
+
+        create_review_action(
+            db=db,
+            document_id=record.document_id,
+            run_id=record.run_id,
+            action_type="approved",
+            before_data=before_snapshot,
+            after_data=after_snapshot,
+            actor="approver",
+            note="Invoice approved from dashboard",
+        )
+
+        run = None
+        actions = []
+
+        if record.run_id:
+            run = get_processing_run_by_id(db, record.run_id)
+            actions = get_review_actions_by_run_id(db, record.run_id)
+
+        payload = build_canonical_invoice_payload(record, run, actions)
+        append_invoice_to_excel(payload)
+
         return RedirectResponse(url=f"/dashboard/invoices/{record_id}", status_code=303)
     finally:
         db.close()
@@ -288,9 +386,29 @@ def dashboard_approve_invoice(record_id: int):
 def dashboard_reject_invoice(record_id: int):
     db = SessionLocal()
     try:
+        record = get_invoice_record_by_id(db, record_id)
+        if not record:
+            raise HTTPException(status_code=404, detail="Record not found")
+
+        before_snapshot = _build_record_snapshot(record)
+
         record = update_invoice_status(db, record_id, "rejected")
         if not record:
             raise HTTPException(status_code=404, detail="Record not found")
+
+        after_snapshot = _build_record_snapshot(record)
+
+        create_review_action(
+            db=db,
+            document_id=record.document_id,
+            run_id=record.run_id,
+            action_type="rejected",
+            before_data=before_snapshot,
+            after_data=after_snapshot,
+            actor="approver",
+            note="Invoice rejected from dashboard",
+        )
+
         return RedirectResponse(url=f"/dashboard/invoices/{record_id}", status_code=303)
     finally:
         db.close()
@@ -306,13 +424,15 @@ def download_invoice_json(record_id: int):
 
         payload = {
             "id": record.id,
+            "document_id": record.document_id,
+            "run_id": record.run_id,
             "original_filename": record.original_filename,
             "saved_path": record.saved_path,
             "status": record.status,
             "created_at": record.created_at.isoformat() if record.created_at else None,
             "extracted_text": record.extracted_text or "",
-            "invoice_data": json.loads(record.invoice_data_json) if record.invoice_data_json else {},
-            "validation_result": json.loads(record.validation_result_json) if record.validation_result_json else {}
+            "invoice_data": _safe_json_loads(record.invoice_data_json),
+            "validation_result": _safe_json_loads(record.validation_result_json),
         }
 
         json_content = json.dumps(payload, indent=2, ensure_ascii=False)
@@ -344,6 +464,8 @@ def download_all_invoices_csv(status: str = "all"):
 
         writer.writerow([
             "id",
+            "document_id",
+            "run_id",
             "original_filename",
             "saved_path",
             "status",
@@ -363,8 +485,8 @@ def download_all_invoices_csv(status: str = "all"):
         ])
 
         for record in records:
-            invoice_data = json.loads(record.invoice_data_json) if record.invoice_data_json else {}
-            validation_result = json.loads(record.validation_result_json) if record.validation_result_json else {}
+            invoice_data = _safe_json_loads(record.invoice_data_json)
+            validation_result = _safe_json_loads(record.validation_result_json)
 
             normalized = invoice_data.get("normalized_invoice_fields", {})
             classification = invoice_data.get("document_classification", {})
@@ -375,6 +497,8 @@ def download_all_invoices_csv(status: str = "all"):
 
             writer.writerow([
                 record.id,
+                record.document_id,
+                record.run_id,
                 record.original_filename,
                 record.saved_path,
                 record.status,

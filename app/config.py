@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     export_dir: str = "storage/exports"
     max_file_size_mb: int = 10
 
+    tesseract_cmd: str = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    tesseract_lang: str = "ara+eng"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
