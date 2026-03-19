@@ -89,6 +89,57 @@ def _create_run(
     return run
 
 
+def _compute_review_status(
+    classification: dict,
+    normalized_invoice_data: dict,
+    debug_info: dict,
+) -> tuple[dict, str]:
+    if not classification.get("is_invoice_like", False):
+        validation_result = {
+            "is_valid": False,
+            "needs_review": False,
+            "warnings": ["The uploaded document is not an invoice."],
+            "confidence_score": 0,
+            "review_reasons": ["Document classified as not invoice"],
+            "missing_fields": [],
+        }
+        return validation_result, "not_invoice"
+
+    normalized_invoice_obj = InvoiceData(**normalized_invoice_data)
+    validation_obj = validate_invoice_data(normalized_invoice_obj)
+    validation_result = validation_obj.model_dump()
+
+    field_review_flags = debug_info.get("field_review_flags", []) or []
+
+    critical_flags = {
+        "invoice_number_missing",
+        "invoice_number_missing_but_candidate_exists",
+        "invoice_number_ambiguous",
+        "invoice_date_missing",
+        "invoice_date_missing_but_candidate_exists",
+        "invoice_date_ambiguous",
+        "items_missing_but_table_detected",
+        "items_not_reliably_detected",
+    }
+
+    needs_review_from_fields = any(flag in critical_flags for flag in field_review_flags)
+    final_needs_review = validation_result.get("needs_review", False) or needs_review_from_fields
+
+    review_reasons = list(validation_result.get("review_reasons", []) or [])
+    additional_field_review_flags = [
+        flag for flag in field_review_flags
+        if flag in critical_flags and flag not in review_reasons
+    ]
+    if additional_field_review_flags:
+        review_reasons.extend(additional_field_review_flags)
+
+    validation_result["needs_review"] = final_needs_review
+    validation_result["review_reasons"] = review_reasons
+
+    status = "needs_review" if final_needs_review else "valid"
+    return validation_result, status
+
+
 def process_uploaded_invoice(
     db: Session,
     original_filename: str,
@@ -101,7 +152,6 @@ def process_uploaded_invoice(
         saved_path=saved_path,
         mime_type=mime_type,
     )
-
     run = _create_run(db=db, document_id=document.id)
 
     extracted_text = ""
@@ -160,7 +210,6 @@ def process_uploaded_invoice(
         )
 
         ai_result = process_document_with_ai(extracted_text, pdf_path=saved_path)
-
         classification = ai_result.get("document_classification", {}) or {}
         invoice_data = ai_result.get("invoice_data")
         normalized_invoice_data = ai_result.get("normalized_invoice_data", {}) or {}
@@ -200,24 +249,15 @@ def process_uploaded_invoice(
             input_data={
                 "classification": classification,
                 "normalized_invoice_data": normalized_invoice_data,
+                "field_review_flags": debug_info.get("field_review_flags", []),
             },
         )
 
-        if not classification.get("is_invoice_like", False):
-            validation_result = {
-                "is_valid": False,
-                "needs_review": False,
-                "warnings": ["The uploaded document is not an invoice."],
-                "confidence_score": 0,
-                "review_reasons": ["Document classified as not invoice"],
-                "missing_fields": [],
-            }
-            status = "not_invoice"
-        else:
-            normalized_invoice_obj = InvoiceData(**normalized_invoice_data)
-            validation_obj = validate_invoice_data(normalized_invoice_obj)
-            validation_result = validation_obj.model_dump()
-            status = "needs_review" if validation_obj.needs_review else "valid"
+        validation_result, status = _compute_review_status(
+            classification=classification,
+            normalized_invoice_data=normalized_invoice_data,
+            debug_info=debug_info,
+        )
 
         _finish_step(
             db=db,

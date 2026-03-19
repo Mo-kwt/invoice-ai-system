@@ -1,653 +1,956 @@
 <!DOCTYPE html>
 <html lang="ar">
 <head>
-    <meta charset="UTF-8">
-    <title>تفاصيل الفاتورة</title>
-    <style>
-        :root {
-            --bg: #f4f6f9;
-            --card: #ffffff;
-            --text: #1f2937;
-            --muted: #6b7280;
-            --border: #e5e7eb;
-            --primary: #2563eb;
-            --primary-dark: #1d4ed8;
-            --success: #198754;
-            --danger: #dc3545;
-            --warning: #f59e0b;
-            --secondary: #6c757d;
-            --good-bg: #dcfce7;
-            --good-text: #166534;
-            --warn-bg: #fef3c7;
-            --warn-text: #92400e;
-            --bad-bg: #fee2e2;
-            --bad-text: #991b1b;
-            --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-            --radius: 14px;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>تفاصيل الفاتورة</title>
+  <style>
+    :root {
+      --bg: #f3f5f9;
+      --card: #ffffff;
+      --card-soft: #f8fafc;
+      --text: #172033;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --primary: #2563eb;
+      --primary-soft: #dbeafe;
+      --success: #15803d;
+      --success-soft: #dcfce7;
+      --warning: #b45309;
+      --warning-soft: #fef3c7;
+      --danger: #b91c1c;
+      --danger-soft: #fee2e2;
+      --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+      --radius: 18px;
+    }
 
-        * {
-            box-sizing: border-box;
-        }
+    * {
+      box-sizing: border-box;
+    }
 
-        body {
-            font-family: Arial, sans-serif;
-            direction: rtl;
-            margin: 0;
-            padding: 24px;
-            background: var(--bg);
-            color: var(--text);
-        }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      direction: rtl;
+    }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
+    .page {
+      max-width: 1280px;
+      margin: 24px auto 40px;
+      padding: 0 18px;
+    }
 
-        .page-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-bottom: 20px;
-        }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
 
-        .page-title {
-            margin: 0;
-            font-size: 28px;
-        }
+    .back-link {
+      text-decoration: none;
+      color: var(--primary);
+      font-weight: 700;
+      font-size: 14px;
+    }
 
-        .page-subtitle {
-            margin: 6px 0 0 0;
-            color: var(--muted);
-            font-size: 14px;
-        }
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
 
-        .card {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            padding: 20px;
-            margin-bottom: 20px;
-        }
+    .btn,
+    .btn-link {
+      border: 0;
+      text-decoration: none;
+      cursor: pointer;
+      padding: 10px 16px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 14px;
+      transition: 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: none;
+    }
 
-        .section-title {
-            margin: 0 0 16px 0;
-            font-size: 20px;
-        }
+    .btn:hover,
+    .btn-link:hover {
+      transform: translateY(-1px);
+    }
 
-        .sub-title {
-            margin: 18px 0 10px 0;
-            font-size: 16px;
-        }
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
 
-        .grid-2 {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 14px;
-        }
+    .btn-success {
+      background: var(--success);
+      color: #fff;
+    }
 
-        .grid-3 {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 14px;
-        }
+    .btn-danger {
+      background: var(--danger);
+      color: #fff;
+    }
 
-        .meta-box {
-            background: #f9fafb;
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 14px;
-        }
+    .btn-light {
+      background: #fff;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
 
-        .meta-label {
-            display: block;
-            color: var(--muted);
-            font-size: 12px;
-            margin-bottom: 6px;
-        }
+    .hero {
+      background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
 
-        .meta-value {
-            font-size: 15px;
-            font-weight: 600;
-            word-break: break-word;
-        }
+    .hero-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
 
-        .badges {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 14px;
-        }
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+    }
 
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 7px 12px;
-            border-radius: 999px;
-            font-size: 13px;
-            font-weight: 700;
-            background: #eef2f7;
-            color: #334155;
-        }
+    .hero-sub {
+      color: var(--muted);
+      margin: 0;
+      line-height: 1.8;
+      max-width: 860px;
+    }
 
-        .badge.good {
-            background: var(--good-bg);
-            color: var(--good-text);
-        }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
 
-        .badge.warn {
-            background: var(--warn-bg);
-            color: var(--warn-text);
-        }
+    .badge-approved,
+    .badge-valid {
+      background: var(--success-soft);
+      color: var(--success);
+    }
 
-        .badge.bad {
-            background: var(--bad-bg);
-            color: var(--bad-text);
-        }
+    .badge-review {
+      background: var(--warning-soft);
+      color: var(--warning);
+    }
 
-        .actions {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
+    .badge-rejected,
+    .badge-not-invoice {
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
 
-        .actions form {
-            margin: 0;
-        }
+    .hero-stats {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 14px;
+    }
 
-        button,
-        .btn-link {
-            border: none;
-            border-radius: 10px;
-            padding: 10px 16px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 700;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            transition: 0.2s ease;
-        }
+    @media (max-width: 1100px) {
+      .hero-stats {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
 
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-        }
+    @media (max-width: 700px) {
+      .hero-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
 
-        .btn-primary:hover {
-            background: var(--primary-dark);
-        }
+    .hero-stat {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      min-height: 92px;
+    }
 
-        .btn-success {
-            background: var(--success);
-            color: white;
-        }
+    .hero-stat .label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
 
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-        }
+    .hero-stat .value {
+      font-size: 18px;
+      font-weight: 800;
+      word-break: break-word;
+      line-height: 1.5;
+    }
 
-        .btn-secondary {
-            background: var(--secondary);
-            color: white;
-        }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.95fr);
+      gap: 20px;
+      align-items: start;
+    }
 
-        .btn-outline {
-            background: white;
-            color: var(--text);
-            border: 1px solid var(--border);
-        }
+    @media (max-width: 1024px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
 
-        .list-box {
-            margin: 0;
-            padding-right: 18px;
-        }
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
 
-        .list-box li {
-            margin-bottom: 8px;
-        }
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      padding: 22px;
+    }
 
-        .table-wrap {
-            overflow-x: auto;
-            border: 1px solid var(--border);
-            border-radius: 12px;
-        }
+    .section h2 {
+      margin: 0 0 16px;
+      font-size: 21px;
+    }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-        }
+    .section h3 {
+      margin: 20px 0 12px;
+      font-size: 16px;
+    }
 
-        th, td {
-            padding: 12px;
-            border-bottom: 1px solid var(--border);
-            text-align: right;
-            vertical-align: top;
-            font-size: 14px;
-        }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
 
-        thead th {
-            background: #f8fafc;
-            font-weight: 700;
-        }
+    .section-note {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
 
-        tr:last-child td {
-            border-bottom: none;
-        }
+    .decision-box {
+      border-radius: 16px;
+      padding: 16px 18px;
+      border: 1px solid var(--border);
+      margin-bottom: 16px;
+      line-height: 1.8;
+      font-weight: 700;
+    }
 
-        .field {
-            margin-bottom: 14px;
-        }
+    .decision-valid {
+      background: var(--success-soft);
+      color: var(--success);
+      border-color: #bbf7d0;
+    }
 
-        .field label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 13px;
-            font-weight: 700;
-            color: var(--muted);
-        }
+    .decision-review {
+      background: var(--warning-soft);
+      color: var(--warning);
+      border-color: #fde68a;
+    }
 
-        .field input {
-            width: 100%;
-            padding: 11px 12px;
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            background: #fff;
-            font-size: 14px;
-        }
+    .decision-danger {
+      background: var(--danger-soft);
+      color: var(--danger);
+      border-color: #fecaca;
+    }
 
-        .field input:focus {
-            outline: none;
-            border-color: #93c5fd;
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
-        }
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
 
-        pre {
-            margin: 0;
-            background: #0f172a;
-            color: #e5e7eb;
-            padding: 14px;
-            border-radius: 12px;
-            overflow-x: auto;
-            white-space: pre-wrap;
-            word-break: break-word;
-            font-size: 13px;
-            line-height: 1.5;
-        }
+    @media (max-width: 640px) {
+      .info-grid {
+        grid-template-columns: 1fr;
+      }
+    }
 
-        .two-col-layout {
-            display: grid;
-            grid-template-columns: 1.25fr 1fr;
-            gap: 20px;
-        }
+    .info-card {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--card-soft);
+      padding: 14px 16px;
+      min-height: 88px;
+    }
 
-        .muted {
-            color: var(--muted);
-            font-size: 14px;
-        }
+    .info-card .label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
 
-        .empty-box {
-            padding: 14px;
-            border-radius: 12px;
-            background: #f9fafb;
-            border: 1px dashed var(--border);
-            color: var(--muted);
-        }
+    .info-card .value {
+      font-size: 18px;
+      font-weight: 800;
+      word-break: break-word;
+      line-height: 1.5;
+    }
 
-        .step-card {
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 14px;
-            margin-bottom: 14px;
-            background: #fff;
-        }
+    .chips {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
 
-        .step-head {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-bottom: 10px;
-        }
+    .chip {
+      background: #f3f4f6;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+    }
 
-        .step-name {
-            font-weight: 700;
-            font-size: 15px;
-        }
+    .chip-warning {
+      background: var(--warning-soft);
+      color: var(--warning);
+      border-color: #fde68a;
+    }
 
-        .step-meta {
-            color: var(--muted);
-            font-size: 12px;
-        }
+    .chip-success {
+      background: var(--success-soft);
+      color: var(--success);
+      border-color: #bbf7d0;
+    }
 
-        .json-block-title {
-            margin: 12px 0 8px 0;
-            font-size: 13px;
-            color: var(--muted);
-            font-weight: 700;
-        }
+    .list {
+      margin: 0;
+      padding-right: 18px;
+      line-height: 1.95;
+    }
 
-        @media (max-width: 900px) {
-            .two-col-layout,
-            .grid-2,
-            .grid-3 {
-                grid-template-columns: 1fr;
-            }
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: #fff;
+    }
 
-            body {
-                padding: 14px;
-            }
-        }
-    </style>
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 680px;
+    }
+
+    th, td {
+      padding: 13px 14px;
+      text-align: right;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    th {
+      background: #f8fafc;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    @media (max-width: 700px) {
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .field label {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .field input {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 14px;
+      background: #fff;
+    }
+
+    .field input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
+    }
+
+    .form-actions {
+      margin-top: 18px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .candidate-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .candidate-card {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      background: #fafafa;
+    }
+
+    .candidate-title {
+      font-weight: 800;
+      margin-bottom: 8px;
+      word-break: break-word;
+      line-height: 1.6;
+    }
+
+    .candidate-meta {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.9;
+      word-break: break-word;
+    }
+
+    details.disclosure {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    details.disclosure summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 16px 18px;
+      font-weight: 800;
+      background: #f8fafc;
+      border-bottom: 1px solid transparent;
+    }
+
+    details.disclosure[open] summary {
+      border-bottom-color: var(--border);
+    }
+
+    details.disclosure summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .disclosure-content {
+      padding: 16px 18px;
+    }
+
+    .code-box {
+      background: #0f172a;
+      color: #e5e7eb;
+      border-radius: 14px;
+      padding: 16px;
+      overflow: auto;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 13px;
+      line-height: 1.75;
+      direction: ltr;
+      text-align: left;
+      white-space: pre-wrap;
+    }
+
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 16px 0;
+    }
+  </style>
 </head>
 <body>
-<div class="container">
+  <div class="page">
+    <div class="topbar">
+      <a class="back-link" href="/dashboard">← العودة إلى اللوحة</a>
+      <div class="actions">
+        <a class="btn-link btn-light" href="/dashboard/invoices/{{ record.id }}/download-json">تنزيل JSON</a>
 
-    <div class="page-header">
-        <div>
-            <h1 class="page-title">تفاصيل الفاتورة</h1>
-            <p class="page-subtitle">عرض نتيجة الاستخراج والمراجعة وخطوات المعالجة</p>
-        </div>
+        <form method="post" action="/dashboard/invoices/{{ record.id }}/approve" style="display:inline;">
+          <button class="btn btn-success" type="submit">اعتماد</button>
+        </form>
 
-        <div class="actions">
-            <a href="/dashboard" class="btn-link btn-secondary">العودة إلى القائمة</a>
-            <a href="/dashboard/invoices/{{ record.id }}/download-json" class="btn-link btn-primary">تحميل JSON</a>
-        </div>
+        <form method="post" action="/dashboard/invoices/{{ record.id }}/reject" style="display:inline;">
+          <button class="btn btn-danger" type="submit">رفض</button>
+        </form>
+      </div>
     </div>
 
-    <div class="two-col-layout">
+    <div class="hero">
+      <div class="hero-head">
         <div>
-
-            <div class="card">
-                <h2 class="section-title">معلومات السجل</h2>
-                <div class="grid-3">
-                    <div class="meta-box">
-                        <span class="meta-label">Record ID</span>
-                        <div class="meta-value">{{ record.id }}</div>
-                    </div>
-                    <div class="meta-box">
-                        <span class="meta-label">Document ID</span>
-                        <div class="meta-value">{{ record.document_id or "-" }}</div>
-                    </div>
-                    <div class="meta-box">
-                        <span class="meta-label">Run ID</span>
-                        <div class="meta-value">{{ record.run_id or "-" }}</div>
-                    </div>
-                    <div class="meta-box">
-                        <span class="meta-label">اسم الملف</span>
-                        <div class="meta-value">{{ record.original_filename }}</div>
-                    </div>
-                    <div class="meta-box">
-                        <span class="meta-label">الحالة</span>
-                        <div class="meta-value">{{ record.status }}</div>
-                    </div>
-                    <div class="meta-box">
-                        <span class="meta-label">تاريخ الإنشاء</span>
-                        <div class="meta-value">{{ record.created_at }}</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <h2 class="section-title">نتيجة التصنيف والتحقق</h2>
-
-                <div class="badges">
-                    <span class="badge {% if classification.get('is_invoice_like') %}good{% else %}bad{% endif %}">
-                        is_invoice_like: {{ classification.get("is_invoice_like") }}
-                    </span>
-
-                    <span class="badge">
-                        document_type: {{ classification.get("document_type", "-") }}
-                    </span>
-
-                    <span class="badge {% if validation_result.get('needs_review') %}warn{% else %}good{% endif %}">
-                        needs_review: {{ validation_result.get("needs_review", False) }}
-                    </span>
-
-                    <span class="badge">
-                        confidence_score: {{ validation_result.get("confidence_score", 0) }}
-                    </span>
-                </div>
-
-                {% if validation_result.get("warnings") %}
-                    <h3 class="sub-title">Warnings</h3>
-                    <ul class="list-box">
-                        {% for w in validation_result.get("warnings", []) %}
-                        <li>{{ w }}</li>
-                        {% endfor %}
-                    </ul>
-                {% endif %}
-
-                {% if validation_result.get("review_reasons") %}
-                    <h3 class="sub-title">Review Reasons</h3>
-                    <ul class="list-box">
-                        {% for r in validation_result.get("review_reasons", []) %}
-                        <li>{{ r }}</li>
-                        {% endfor %}
-                    </ul>
-                {% endif %}
-
-                {% if validation_result.get("missing_fields") %}
-                    <h3 class="sub-title">Missing Fields</h3>
-                    <ul class="list-box">
-                        {% for f in validation_result.get("missing_fields", []) %}
-                        <li>{{ f }}</li>
-                        {% endfor %}
-                    </ul>
-                {% endif %}
-            </div>
-
-            <div class="card">
-                <h2 class="section-title">بيانات المعالجة</h2>
-
-                {% if run_view %}
-                    <div class="badges">
-                        <span class="badge">{{ run_view.status }}</span>
-                        <span class="badge">pipeline: {{ run_view.pipeline_version }}</span>
-                        <span class="badge">model: {{ run_view.model_name }}</span>
-
-                        {% if run_view.used_fallback %}
-                            <span class="badge warn">fallback used</span>
-                        {% else %}
-                            <span class="badge good">no fallback</span>
-                        {% endif %}
-                    </div>
-
-                    <div class="grid-2">
-                        <div class="meta-box">
-                            <span class="meta-label">Run Started</span>
-                            <div class="meta-value">{{ run_view.started_at or "-" }}</div>
-                        </div>
-                        <div class="meta-box">
-                            <span class="meta-label">Run Finished</span>
-                            <div class="meta-value">{{ run_view.finished_at or "-" }}</div>
-                        </div>
-                    </div>
-
-                    <h3 class="sub-title">Fallback Reasons</h3>
-                    {% if run_view.fallback_reasons %}
-                        <ul class="list-box">
-                            {% for reason in run_view.fallback_reasons %}
-                            <li>{{ reason }}</li>
-                            {% endfor %}
-                        </ul>
-                    {% else %}
-                        <div class="empty-box">لا توجد أسباب fallback مسجلة.</div>
-                    {% endif %}
-                {% else %}
-                    <div class="empty-box">لا توجد بيانات run مرتبطة بهذا السجل.</div>
-                {% endif %}
-            </div>
-
-            <div class="card">
-                <h2 class="section-title">سجل الخطوات (Processing Steps)</h2>
-
-                {% if step_rows %}
-                    {% for step in step_rows %}
-                    <div class="step-card">
-                        <div class="step-head">
-                            <div>
-                                <div class="step-name">{{ step.step_name }}</div>
-                                <div class="step-meta">
-                                    Started: {{ step.started_at or "-" }} |
-                                    Finished: {{ step.finished_at or "-" }}
-                                </div>
-                            </div>
-
-                            {% if step.status == "success" %}
-                                <span class="badge good">{{ step.status }}</span>
-                            {% elif step.status == "failed" %}
-                                <span class="badge bad">{{ step.status }}</span>
-                            {% else %}
-                                <span class="badge warn">{{ step.status }}</span>
-                            {% endif %}
-                        </div>
-
-                        {% if step.error_message %}
-                            <div class="json-block-title">Error Message</div>
-                            <pre>{{ step.error_message }}</pre>
-                        {% endif %}
-
-                        <div class="json-block-title">Input Snapshot</div>
-                        <pre>{{ step.input_snapshot | tojson(indent=2) }}</pre>
-
-                        <div class="json-block-title">Output Snapshot</div>
-                        <pre>{{ step.output_snapshot | tojson(indent=2) }}</pre>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="empty-box">لا توجد خطوات معالجة مرتبطة بهذا السجل.</div>
-                {% endif %}
-            </div>
-
+          <h1>تفاصيل السجل رقم {{ record.id }}</h1>
+          <p class="hero-sub">
+            هذه الصفحة تعرض نتيجة الاستخلاص، قرار المراجعة، الأدلة المساندة للحقول الحساسة،
+            والبيانات التي يمكن تعديلها يدويًا قبل الاعتماد النهائي.
+          </p>
         </div>
 
         <div>
-
-            <div class="card">
-                <h2 class="section-title">تعديل البيانات</h2>
-                <form method="post" action="/dashboard/invoices/{{ record.id }}/update">
-                    <div class="field">
-                        <label>Vendor Name</label>
-                        <input type="text" name="vendor_name" value="{{ data.get('vendor_name', '') or '' }}">
-                    </div>
-
-                    <div class="field">
-                        <label>Invoice Number</label>
-                        <input type="text" name="invoice_number" value="{{ data.get('invoice_number', '') or '' }}">
-                    </div>
-
-                    <div class="field">
-                        <label>Invoice Date</label>
-                        <input type="text" name="invoice_date" value="{{ data.get('invoice_date', '') or '' }}">
-                    </div>
-
-                    <div class="field">
-                        <label>Subtotal</label>
-                        <input type="text" name="subtotal" value="{{ data.get('subtotal', '') if data.get('subtotal') is not none else '' }}">
-                    </div>
-
-                    <div class="field">
-                        <label>Tax</label>
-                        <input type="text" name="tax" value="{{ data.get('tax', '') if data.get('tax') is not none else '' }}">
-                    </div>
-
-                    <div class="field">
-                        <label>Discount</label>
-                        <input type="text" name="discount" value="{{ data.get('discount', '') if data.get('discount') is not none else '' }}">
-                    </div>
-
-                    <div class="field">
-                        <label>Total</label>
-                        <input type="text" name="total" value="{{ data.get('total', '') if data.get('total') is not none else '' }}">
-                    </div>
-
-                    <div class="field">
-                        <label>Currency</label>
-                        <input type="text" name="currency" value="{{ data.get('currency', '') or '' }}">
-                    </div>
-
-                    <div class="actions">
-                        <button type="submit" class="btn-primary">حفظ التعديلات</button>
-                    </div>
-                </form>
-            </div>
-
-            <div class="card">
-                <h2 class="section-title">إجراءات الاعتماد</h2>
-                <div class="actions">
-                    <form method="post" action="/dashboard/invoices/{{ record.id }}/approve">
-                        <button type="submit" class="btn-success">Approve</button>
-                    </form>
-
-                    <form method="post" action="/dashboard/invoices/{{ record.id }}/reject">
-                        <button type="submit" class="btn-danger">Reject</button>
-                    </form>
-                </div>
-            </div>
-
-            <div class="card">
-                <h2 class="section-title">سجل المراجعة (Audit Trail)</h2>
-
-                {% if review_rows %}
-                    {% for item in review_rows %}
-                    <div class="step-card">
-                        <div class="step-head">
-                            <div>
-                                <div class="step-name">{{ item.action_type }}</div>
-                                <div class="step-meta">
-                                    Actor: {{ item.actor or "-" }} |
-                                    At: {{ item.created_at or "-" }}
-                                </div>
-                            </div>
-                            <span class="badge">{{ item.action_type }}</span>
-                        </div>
-
-                        {% if item.note %}
-                            <div class="json-block-title">Note</div>
-                            <pre>{{ item.note }}</pre>
-                        {% endif %}
-
-                        <div class="json-block-title">Before</div>
-                        <pre>{{ item.before_data | tojson(indent=2) }}</pre>
-
-                        <div class="json-block-title">After</div>
-                        <pre>{{ item.after_data | tojson(indent=2) }}</pre>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="empty-box">لا توجد عمليات مراجعة مسجلة حتى الآن.</div>
-                {% endif %}
-            </div>
-
-            <div class="card">
-                <h2 class="section-title">Raw Extracted Fields</h2>
-                {% if raw_data %}
-                    <pre>{{ raw_data | tojson(indent=2) }}</pre>
-                {% else %}
-                    <div class="empty-box">لا توجد raw fields متاحة.</div>
-                {% endif %}
-            </div>
-
-            <div class="card">
-                <h2 class="section-title">Debug Info</h2>
-                {% if debug_info %}
-                    <pre>{{ debug_info | tojson(indent=2) }}</pre>
-                {% else %}
-                    <div class="empty-box">لا توجد debug info متاحة.</div>
-                {% endif %}
-            </div>
-
+          {% if record.status == "approved" %}
+            <span class="badge badge-approved">معتمد</span>
+          {% elif record.status == "valid" %}
+            <span class="badge badge-valid">صالح</span>
+          {% elif record.status == "needs_review" %}
+            <span class="badge badge-review">يحتاج مراجعة</span>
+          {% elif record.status == "rejected" %}
+            <span class="badge badge-rejected">مرفوض</span>
+          {% elif record.status == "not_invoice" %}
+            <span class="badge badge-not-invoice">ليس فاتورة</span>
+          {% else %}
+            <span class="badge badge-review">{{ record.status }}</span>
+          {% endif %}
         </div>
+      </div>
+
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <div class="label">اسم الملف</div>
+          <div class="value">{{ record.original_filename }}</div>
+        </div>
+
+        <div class="hero-stat">
+          <div class="label">نوع المستند</div>
+          <div class="value">{{ classification.get("document_type", "-") }}</div>
+        </div>
+
+        <div class="hero-stat">
+          <div class="label">درجة الثقة</div>
+          <div class="value">{{ validation_result.get("confidence_score", "-") }}</div>
+        </div>
+
+        <div class="hero-stat">
+          <div class="label">رقم الفاتورة</div>
+          <div class="value">{{ data.get("invoice_number") or "مفقود" }}</div>
+        </div>
+
+        <div class="hero-stat">
+          <div class="label">التاريخ</div>
+          <div class="value">{{ data.get("invoice_date") or "مفقود" }}</div>
+        </div>
+
+        <div class="hero-stat">
+          <div class="label">الإجمالي</div>
+          <div class="value">
+            {% if data.get("total") is not none %}
+              {{ data.get("total") }} {{ data.get("currency") or "" }}
+            {% else %}
+              مفقود
+            {% endif %}
+          </div>
+        </div>
+      </div>
     </div>
 
-</div>
+    <div class="layout">
+      <div class="stack">
+        <div class="section">
+          <div class="section-head">
+            <h2>قرار المراجعة</h2>
+            <div class="section-note">ملخص القرار النهائي المبني على التحقق وقواعد المراجعة.</div>
+          </div>
+
+          {% if validation_result.get("is_valid") and not validation_result.get("needs_review") %}
+            <div class="decision-box decision-valid">
+              ✔ المستند سليم ولا توجد إشارات حرجة تستدعي المراجعة.
+            </div>
+          {% elif validation_result.get("needs_review") %}
+            <div class="decision-box decision-review">
+              ⚠ المستند يحتاج مراجعة قبل الاعتماد النهائي.
+            </div>
+          {% else %}
+            <div class="decision-box decision-danger">
+              ✖ توجد مشاكل جوهرية في المستند أو في اكتمال البيانات.
+            </div>
+          {% endif %}
+
+          <div class="info-grid">
+            <div class="info-card">
+              <div class="label">حالة الصلاحية</div>
+              <div class="value">{% if validation_result.get("is_valid") %}Valid{% else %}Invalid{% endif %}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">هل يحتاج مراجعة؟</div>
+              <div class="value">{% if validation_result.get("needs_review") %}Yes{% else %}No{% endif %}</div>
+            </div>
+          </div>
+
+          {% if review_reasons %}
+            <h3>أسباب القرار</h3>
+            <ul class="list">
+              {% for reason in review_reasons %}
+                <li>{{ reason }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+
+          {% if warnings %}
+            <h3>الملاحظات</h3>
+            <ul class="list">
+              {% for warn in warnings %}
+                <li>{{ warn }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+
+          <h3>إشارات المراجعة على مستوى الحقول</h3>
+          {% if field_review_flags %}
+            <div class="chips">
+              {% for flag in field_review_flags %}
+                <span class="chip chip-warning">{{ flag }}</span>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="chips">
+              <span class="chip chip-success">لا توجد إشارات حرجة</span>
+            </div>
+          {% endif %}
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <h2>البيانات المنظفة</h2>
+            <div class="section-note">النسخة المعتمدة بعد التطبيع والمعالجة اللاحقة.</div>
+          </div>
+
+          <div class="info-grid">
+            <div class="info-card">
+              <div class="label">اسم الجهة</div>
+              <div class="value">{{ data.get("vendor_name") or "مفقود" }}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">رقم الفاتورة</div>
+              <div class="value">{{ data.get("invoice_number") or "مفقود" }}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">التاريخ</div>
+              <div class="value">{{ data.get("invoice_date") or "مفقود" }}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">العملة</div>
+              <div class="value">{{ data.get("currency") or "مفقود" }}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">الإجمالي الفرعي</div>
+              <div class="value">
+                {% if data.get("subtotal") is not none %}{{ data.get("subtotal") }}{% else %}مفقود{% endif %}
+              </div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">الضريبة</div>
+              <div class="value">
+                {% if data.get("tax") is not none %}{{ data.get("tax") }}{% else %}مفقود{% endif %}
+              </div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">الخصم</div>
+              <div class="value">
+                {% if data.get("discount") is not none %}{{ data.get("discount") }}{% else %}مفقود{% endif %}
+              </div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">الإجمالي</div>
+              <div class="value">
+                {% if data.get("total") is not none %}{{ data.get("total") }}{% else %}مفقود{% endif %}
+              </div>
+            </div>
+          </div>
+
+          <h3>العناصر المستخرجة</h3>
+          {% if data.get("items") %}
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>الوصف</th>
+                    <th>الكمية</th>
+                    <th>سعر الوحدة</th>
+                    <th>الإجمالي</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in data.get("items", []) %}
+                    <tr>
+                      <td>{{ item.get("description") or "-" }}</td>
+                      <td>{{ item.get("quantity") if item.get("quantity") is not none else "-" }}</td>
+                      <td>{{ item.get("unit_price") if item.get("unit_price") is not none else "-" }}</td>
+                      <td>{{ item.get("total_price") if item.get("total_price") is not none else "-" }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="empty">لا توجد عناصر مستخرجة.</p>
+          {% endif %}
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <h2>تعديل البيانات يدويًا</h2>
+            <div class="section-note">يمكن تعديل الحقول الأساسية ثم حفظها مباشرة.</div>
+          </div>
+
+          <form method="post" action="/dashboard/invoices/{{ record.id }}/update">
+            <div class="form-grid">
+              <div class="field">
+                <label>اسم الجهة</label>
+                <input type="text" name="vendor_name" value="{{ data.get('vendor_name') or '' }}">
+              </div>
+
+              <div class="field">
+                <label>رقم الفاتورة</label>
+                <input type="text" name="invoice_number" value="{{ data.get('invoice_number') or '' }}">
+              </div>
+
+              <div class="field">
+                <label>التاريخ</label>
+                <input type="text" name="invoice_date" value="{{ data.get('invoice_date') or '' }}">
+              </div>
+
+              <div class="field">
+                <label>الإجمالي الفرعي</label>
+                <input type="text" name="subtotal" value="{{ data.get('subtotal') if data.get('subtotal') is not none else '' }}">
+              </div>
+
+              <div class="field">
+                <label>الضريبة</label>
+                <input type="text" name="tax" value="{{ data.get('tax') if data.get('tax') is not none else '' }}">
+              </div>
+
+              <div class="field">
+                <label>الخصم</label>
+                <input type="text" name="discount" value="{{ data.get('discount') if data.get('discount') is not none else '' }}">
+              </div>
+
+              <div class="field">
+                <label>الإجمالي</label>
+                <input type="text" name="total" value="{{ data.get('total') if data.get('total') is not none else '' }}">
+              </div>
+
+              <div class="field">
+                <label>العملة</label>
+                <input type="text" name="currency" value="{{ data.get('currency') or '' }}">
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button class="btn btn-primary" type="submit">حفظ التعديلات</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <h2>البيانات الخام قبل التنظيف</h2>
+            <div class="section-note">القيم قبل التطبيع النهائي، للمقارنة فقط.</div>
+          </div>
+
+          <div class="info-grid">
+            <div class="info-card">
+              <div class="label">اسم الجهة</div>
+              <div class="value">{{ raw_data.get("vendor_name") or "-" }}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">رقم الفاتورة</div>
+              <div class="value">{{ raw_data.get("invoice_number") or "-" }}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">التاريخ</div>
+              <div class="value">{{ raw_data.get("invoice_date") or "-" }}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">الإجمالي</div>
+              <div class="value">{{ raw_data.get("total") or "-" }}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">العملة</div>
+              <div class="value">{{ raw_data.get("currency") or "-" }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="section">
+          <div class="section-head">
+            <h2>ملخص الثقة للحقول الحساسة</h2>
+            <div class="section-note">إشارات مساندة لرقم الفاتورة، التاريخ، واكتشاف جدول العناصر.</div>
+          </div>
+
+          <div class="info-grid">
+            <div class="info-card">
+              <div class="label">رقم الفاتورة المقترح</div>
+              <div class="value">{{ field_evidence.get("suggested_invoice_number") or "لا يوجد" }}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">ثقة رقم الفاتورة</div>
+              <div class="value">{{ field_evidence.get("suggested_invoice_number_confidence", "-") }}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">تاريخ الفاتورة المقترح</div>
+              <div class="value">{{ field_evidence.get("suggested_invoice_date") or "لا يوجد" }}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">ثقة تاريخ الفاتورة</div>
+              <div class="value">{{ field_evidence.get("suggested_invoice_date_confidence", "-") }}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">هل تم اكتشاف جدول عناصر؟</div>
+              <div class="value">{% if field_evidence.get("items_table_detected") %}نعم{% else %}لا{% endif %}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="label">ثقة جدول العناصر</div>
+              <div class="value">{{ field_evidence.get("items_table_confidence", "-") }}</div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <h3>مرشحات رقم الفاتورة</h3>
+          {% if field_evidence.get("invoice_number_candidates") %}
+            <div class="candidate-list">
+              {% for candidate in field_evidence.get("invoice_number_candidates", []) %}
+                <div class="candidate-card">
+                  <div class="candidate-title">{{ candidate.get("value") }}</div>
+                  <div class="candidate-meta">
+                    score: {{ candidate.get("score") }}<br>
+                    reason: {{ candidate.get("reason") }}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="empty">لا توجد مرشحات.</p>
+          {% endif %}
+
+          <h3>مرشحات تاريخ الفاتورة</h3>
+          {% if field_evidence.get("invoice_date_candidates") %}
+            <div class="candidate-list">
+              {% for candidate in field_evidence.get("invoice_date_candidates", []) %}
+                <div class="candidate-card">
+                  <div class="candidate-title">{{ candidate.get("value") }}</div>
+                  <div class="candidate-meta">
+                    score: {{ candidate.get("score") }}<br>
+                    reason: {{ candidate.get("reason") }}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="empty">لا توجد مرشحات.</p>
+          {% endif %}
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <h2>الأسطر الداعمة لاكتشاف جدول العناصر</h2>
+            <div class="section-note">هذه الأسطر ساعدت النظام على استنتاج وجود جدول عناصر.</div>
+          </div>
+
+          {% if field_evidence.get("items_table_lines") %}
+            <div class="candidate-list">
+              {% for line in field_evidence.get("items_table_lines", []) %}
+                <div class="candidate-card">
+                  <div class="candidate-meta">
+                    <strong>score:</strong> {{ line.get("score") }}<br>
+                    <strong>tokens:</strong> {{ line.get("tokens") }}
+                  </div>
+                  <div style="margin-top:10px; line-height:1.9; word-break: break-word;">
+                    {{ line.get("line") }}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="empty">لا توجد أسطر داعمة متاحة.</p>
+          {% endif %}
+        </div>
+
+        <div class="section">
+          <details class="disclosure" open>
+            <summary>النص المستخرج</summary>
+            <div class="disclosure-content">
+              <div class="code-box">{{ record.extracted_text }}</div>
+            </div>
+          </details>
+        </div>
+
+        {% if debug_info %}
+          <div class="section">
+            <details class="disclosure">
+              <summary>معلومات التصحيح Debug Info</summary>
+              <div class="disclosure-content">
+                <div class="code-box">{{ debug_info | tojson(indent=2) }}</div>
+              </div>
+            </details>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
 </body>
 </html>
