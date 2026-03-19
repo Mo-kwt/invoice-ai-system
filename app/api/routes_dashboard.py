@@ -53,6 +53,150 @@ def _safe_json_loads(value: str | None):
         return {}
 
 
+def _deduplicate_keep_order(values: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for value in values:
+        if value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result
+
+
+def _apply_field_review_flag_adjustments(
+    confidence_score: float,
+    field_review_flags: list[str],
+) -> float:
+    adjusted_score = float(confidence_score)
+
+    flag_penalties = {
+        "invoice_number_missing": 18,
+        "invoice_number_missing_but_candidate_exists": 16,
+        "invoice_number_ambiguous": 18,
+        "invoice_number_low_confidence": 12,
+        "invoice_number_differs_from_top_candidate": 10,
+        "invoice_date_missing": 18,
+        "invoice_date_missing_but_candidate_exists": 16,
+        "invoice_date_ambiguous": 18,
+        "invoice_date_low_confidence": 10,
+        "invoice_date_differs_from_top_candidate": 8,
+        "items_missing_but_table_detected": 12,
+        "items_not_reliably_detected": 10,
+    }
+
+    flags_present = [flag for flag in field_review_flags if flag in flag_penalties]
+
+    for flag in flags_present:
+        adjusted_score -= flag_penalties[flag]
+
+    if flags_present:
+        adjusted_score = min(adjusted_score, 79.0)
+
+    if any(
+        flag in {
+            "invoice_number_ambiguous",
+            "invoice_date_ambiguous",
+            "invoice_number_missing_but_candidate_exists",
+            "invoice_date_missing_but_candidate_exists",
+            "invoice_number_low_confidence",
+            "invoice_date_low_confidence",
+        }
+        for flag in flags_present
+    ):
+        adjusted_score = min(adjusted_score, 72.0)
+
+    if any(
+        flag in {"invoice_number_missing", "invoice_date_missing"}
+        for flag in flags_present
+    ):
+        adjusted_score = min(adjusted_score, 68.0)
+
+    compound_high_risk_flags = {
+        "invoice_number_missing",
+        "invoice_number_missing_but_candidate_exists",
+        "invoice_number_ambiguous",
+        "invoice_number_low_confidence",
+        "invoice_date_missing",
+        "invoice_date_missing_but_candidate_exists",
+        "invoice_date_ambiguous",
+        "invoice_date_low_confidence",
+        "items_missing_but_table_detected",
+        "items_not_reliably_detected",
+    }
+    compound_count = len([flag for flag in flags_present if flag in compound_high_risk_flags])
+
+    if compound_count >= 3:
+        adjusted_score = min(adjusted_score, 60.0)
+    elif compound_count == 2:
+        adjusted_score = min(adjusted_score, 66.0)
+
+    return max(0.0, min(100.0, round(adjusted_score, 2)))
+
+
+def _compute_dashboard_review_status(
+    classification: dict,
+    normalized_invoice_data: dict,
+    debug_info: dict,
+) -> tuple[dict, str]:
+    if not classification.get("is_invoice_like", False):
+        validation_result = {
+            "is_valid": False,
+            "needs_review": False,
+            "warnings": ["The uploaded document is not an invoice."],
+            "review_reasons": ["Document classified as not invoice"],
+            "missing_fields": [],
+            "confidence_score": 0,
+        }
+        return validation_result, "not_invoice"
+
+    normalized_invoice_obj = InvoiceData(**normalized_invoice_data)
+    validation_obj = validate_invoice_data(normalized_invoice_obj)
+    validation_result = validation_obj.model_dump()
+
+    field_review_flags = debug_info.get("field_review_flags", []) or []
+
+    critical_flags = {
+        "invoice_number_missing",
+        "invoice_number_missing_but_candidate_exists",
+        "invoice_number_ambiguous",
+        "invoice_number_low_confidence",
+        "invoice_date_missing",
+        "invoice_date_missing_but_candidate_exists",
+        "invoice_date_ambiguous",
+        "invoice_date_low_confidence",
+        "items_missing_but_table_detected",
+        "items_not_reliably_detected",
+    }
+
+    needs_review_from_fields = any(flag in critical_flags for flag in field_review_flags)
+
+    adjusted_confidence_score = _apply_field_review_flag_adjustments(
+        confidence_score=validation_result.get("confidence_score", 0),
+        field_review_flags=field_review_flags,
+    )
+
+    final_needs_review = (
+        validation_result.get("needs_review", False)
+        or needs_review_from_fields
+        or adjusted_confidence_score < 75
+    )
+
+    review_reasons = list(validation_result.get("review_reasons", []) or [])
+    additional_field_review_flags = [
+        flag for flag in field_review_flags
+        if flag in critical_flags and flag not in review_reasons
+    ]
+    if additional_field_review_flags:
+        review_reasons.extend(additional_field_review_flags)
+
+    validation_result["confidence_score"] = adjusted_confidence_score
+    validation_result["needs_review"] = final_needs_review
+    validation_result["review_reasons"] = _deduplicate_keep_order(review_reasons)
+
+    status = "needs_review" if final_needs_review else "valid"
+    return validation_result, status
+
+
 def _build_dashboard_row(record):
     invoice_data_dict = _safe_json_loads(record.invoice_data_json)
     validation_result_dict = _safe_json_loads(record.validation_result_json)
@@ -172,45 +316,11 @@ def dashboard_upload_invoice(file: UploadFile = File(...)):
         normalized_invoice_data = ai_result["normalized_invoice_data"]
         debug_info = ai_result.get("debug_info", {})
 
-        if not classification.get("is_invoice_like", False):
-            validation_result = {
-                "is_valid": False,
-                "needs_review": False,
-                "warnings": ["The uploaded document is not an invoice."],
-                "review_reasons": ["Document classified as not invoice"],
-                "missing_fields": [],
-                "confidence_score": 0,
-            }
-            status = "not_invoice"
-        else:
-            normalized_invoice_obj = InvoiceData(**normalized_invoice_data)
-            validation_obj = validate_invoice_data(normalized_invoice_obj)
-            validation_result = validation_obj.model_dump()
-
-            field_review_flags = debug_info.get("field_review_flags", [])
-            critical_flags = {
-                "invoice_number_missing",
-                "invoice_number_missing_but_candidate_exists",
-                "invoice_number_ambiguous",
-                "invoice_date_missing",
-                "invoice_date_missing_but_candidate_exists",
-                "invoice_date_ambiguous",
-                "items_missing_but_table_detected",
-                "items_not_reliably_detected",
-            }
-
-            needs_review_from_fields = any(flag in critical_flags for flag in field_review_flags)
-            final_needs_review = validation_result.get("needs_review", False) or needs_review_from_fields
-
-            review_reasons = list(validation_result.get("review_reasons", []) or [])
-            for flag in field_review_flags:
-                if flag in critical_flags and flag not in review_reasons:
-                    review_reasons.append(flag)
-
-            validation_result["needs_review"] = final_needs_review
-            validation_result["review_reasons"] = review_reasons
-
-            status = "needs_review" if final_needs_review else "valid"
+        validation_result, status = _compute_dashboard_review_status(
+            classification=classification,
+            normalized_invoice_data=normalized_invoice_data,
+            debug_info=debug_info,
+        )
 
         create_invoice_record(
             db=db,
@@ -286,36 +396,11 @@ def dashboard_update_invoice(
         normalized_data["currency"] = _clean_optional_str(currency)
         normalized_data["items"] = normalized_data.get("items", [])
 
-        invoice_obj = InvoiceData(**normalized_data)
-        validation_obj = validate_invoice_data(invoice_obj)
-        validation_result_dict = validation_obj.model_dump()
-
-        field_review_flags = debug_info.get("field_review_flags", []) if isinstance(debug_info, dict) else []
-        critical_flags = {
-            "invoice_number_missing",
-            "invoice_number_missing_but_candidate_exists",
-            "invoice_number_ambiguous",
-            "invoice_date_missing",
-            "invoice_date_missing_but_candidate_exists",
-            "invoice_date_ambiguous",
-            "items_missing_but_table_detected",
-            "items_not_reliably_detected",
-        }
-
-        if classification.get("is_invoice_like", False):
-            needs_review_from_fields = any(flag in critical_flags for flag in field_review_flags)
-            final_needs_review = validation_result_dict.get("needs_review", False) or needs_review_from_fields
-
-            review_reasons = list(validation_result_dict.get("review_reasons", []) or [])
-            for flag in field_review_flags:
-                if flag in critical_flags and flag not in review_reasons:
-                    review_reasons.append(flag)
-
-            validation_result_dict["needs_review"] = final_needs_review
-            validation_result_dict["review_reasons"] = review_reasons
-            status = "needs_review" if final_needs_review else "valid"
-        else:
-            status = "not_invoice"
+        validation_result_dict, status = _compute_dashboard_review_status(
+            classification=classification,
+            normalized_invoice_data=normalized_data,
+            debug_info=debug_info,
+        )
 
         updated_invoice_payload = {
             "document_classification": classification,

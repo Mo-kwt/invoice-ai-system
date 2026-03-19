@@ -7,13 +7,45 @@ def _has_meaningful_text(value: str | None) -> bool:
     return bool(str(value).strip())
 
 
+def _deduplicate_keep_order(values: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for value in values:
+        if value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result
+
+
+def _apply_integrity_review_alignment(
+    score: float,
+    critical_review_triggers: list[str],
+    missing_fields: list[str],
+) -> float:
+    aligned_score = score
+
+    if critical_review_triggers:
+        aligned_score = min(aligned_score, 79.0)
+
+    critical_missing_fields = {"invoice_number", "invoice_date", "total"}
+    critical_missing_count = len(
+        [field for field in missing_fields if field in critical_missing_fields]
+    )
+
+    if critical_missing_count >= 2:
+        aligned_score = min(aligned_score, 69.0)
+    elif critical_missing_count == 1:
+        aligned_score = min(aligned_score, 79.0)
+
+    return max(0.0, min(100.0, aligned_score))
+
+
 def validate_invoice_data(invoice: InvoiceData) -> ValidationResult:
     warnings = []
     review_reasons = []
     missing_fields = []
     score = 100.0
 
-    # نجمع أسباب المراجعة الحرجة بشكل منفصل
     critical_review_triggers = []
 
     # 1) التحقق من الحقول الأساسية
@@ -95,7 +127,6 @@ def validate_invoice_data(invoice: InvoiceData) -> ValidationResult:
             score -= 20
 
     # 3) فحص عناصر الفاتورة
-    # غياب items مهم، لكنه ليس دائمًا سببًا كافيًا وحده لإجبار المراجعة
     if not invoice.items:
         warnings.append("No line items were extracted.")
         review_reasons.append("No invoice items extracted")
@@ -117,7 +148,6 @@ def validate_invoice_data(invoice: InvoiceData) -> ValidationResult:
             review_reasons.append("Some invoice items look incomplete")
             score -= min(12, bad_items * 3)
 
-            # نعدها حرجة فقط إذا كانت كل العناصر تقريبًا رديئة
             if invoice.items and bad_items >= len(invoice.items):
                 critical_review_triggers.append("all_items_incomplete")
 
@@ -133,8 +163,13 @@ def validate_invoice_data(invoice: InvoiceData) -> ValidationResult:
         critical_review_triggers.append("invoice_number_too_short")
         score -= 10
 
-    # 5) منع الدرجة من النزول أقل من صفر
+    # 5) منع الدرجة من النزول أقل من صفر أو الارتفاع بشكل لا يعكس قرار المراجعة
     score = max(0.0, min(100.0, score))
+    score = _apply_integrity_review_alignment(
+        score=score,
+        critical_review_triggers=critical_review_triggers,
+        missing_fields=missing_fields,
+    )
 
     # 6) منطق الصلاحية
     critical_missing = 0
@@ -147,17 +182,17 @@ def validate_invoice_data(invoice: InvoiceData) -> ValidationResult:
 
     is_valid = critical_missing == 0
 
-    # 7) منطق المراجعة الجديد
-    # تحتاج مراجعة إذا:
-    # - يوجد trigger حرج
-    # - أو الدرجة منخفضة
-    # - أو هناك أكثر من حقلين ناقصين عمومًا
-    # أما warnings البسيطة وحدها فلا تفرض مراجعة دائمًا
+    # 7) منطق المراجعة
+    # warnings البسيطة وحدها لا تفرض المراجعة دائمًا
     needs_review = (
         len(critical_review_triggers) > 0
-        or score < 85
+        or score < 75
         or len(missing_fields) >= 3
     )
+
+    warnings = _deduplicate_keep_order(warnings)
+    review_reasons = _deduplicate_keep_order(review_reasons)
+    missing_fields = _deduplicate_keep_order(missing_fields)
 
     return ValidationResult(
         is_valid=is_valid,
