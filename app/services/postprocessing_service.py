@@ -756,6 +756,54 @@ def collect_total_candidates(text: str):
     return candidates
 
 
+def _has_line_item_like_context(context: str) -> bool:
+    if not context:
+        return False
+
+    context_lower = context.lower()
+
+    keywords = [
+        "qty",
+        "quantity",
+        "unit",
+        "price",
+        "rate",
+        "description",
+        "item",
+        "items",
+        "discount",
+        "disc",
+        "vat",
+        "tax",
+        "amount",
+        "gross",
+        "net",
+    ]
+
+    return any(word in context_lower for word in keywords)
+
+
+def _looks_like_invoice_total_format(raw_value: str) -> bool:
+    if not raw_value:
+        return False
+
+    cleaned = raw_value.strip()
+
+    if _is_fragmented_total_candidate(cleaned):
+        return False
+
+    if _is_probable_phone_like_total(cleaned, cleaned):
+        return False
+
+    if "." in cleaned or "," in cleaned:
+        return True
+
+    digits_only = re.sub(r"\D", "", cleaned)
+    if len(digits_only) >= 4:
+        return True
+
+    return False
+
 def score_total_candidate(candidate):
     if not candidate:
         return candidate
@@ -785,6 +833,10 @@ def score_total_candidate(candidate):
         score -= 35
         reasons.append("negative_context")
 
+    if _has_line_item_like_context(context):
+        score -= 20
+        reasons.append("line_item_like_context")
+
     if _is_fragmented_total_candidate(raw_value):
         score -= 40
         reasons.append("fragmented_number")
@@ -796,6 +848,10 @@ def score_total_candidate(candidate):
     if "." in raw_value or "," in raw_value:
         score += 8
         reasons.append("decimal_or_grouped_amount")
+
+    if _looks_like_invoice_total_format(raw_value):
+        score += 6
+        reasons.append("invoice_style_amount_format")
 
     position_ratio = working.get("position_ratio", 1.0)
     if position_ratio >= 0.55:
@@ -817,6 +873,15 @@ def score_total_candidate(candidate):
             score -= 35
             reasons.append("unreasonably_large_amount")
 
+        if amount < 100 and "." not in raw_value and "," not in raw_value:
+            if label_type != "strong_label":
+                score -= 18
+                reasons.append("short_unformatted_amount")
+
+        if amount < 100 and label_type == "currency_hint":
+            score -= 12
+            reasons.append("small_amount_weak_label_context")
+
     score = _clamp_score(score)
     working["score"] = score
     working["reasons"] = reasons
@@ -835,11 +900,19 @@ def select_best_total(candidates):
         return None
 
     best = scored_candidates[0]
-    if best.get("score", 0) < 35:
+    best_score = best.get("score", 0)
+
+    if best_score < 45:
         return None
 
-    return best.get("value")
+    if len(scored_candidates) > 1:
+        second_best = scored_candidates[1]
+        second_score = second_best.get("score", 0)
 
+        if best_score < 60 and (best_score - second_score) < 8:
+            return None
+
+    return best.get("value")
 
 def find_total_in_text(text: str):
     candidates = collect_total_candidates(text)
@@ -897,6 +970,52 @@ def remove_empty_items(data: dict):
     data["items"] = cleaned_items
     return data
 
+
+def should_retry_total_from_text(current_total) -> bool:
+    if current_total is None:
+        return True
+
+    try:
+        amount = float(current_total)
+    except (TypeError, ValueError):
+        return True
+
+    text_value = str(current_total).strip()
+
+    if amount <= 0:
+        return True
+
+    if amount < 100 and "." not in text_value and "," not in text_value:
+        return True
+
+    return False
+
+def find_strong_total_in_text(text: str, min_score: int = 60):
+    candidates = collect_total_candidates(text)
+    scored_candidates = [score_total_candidate(c) for c in candidates]
+    scored_candidates = sorted(
+        scored_candidates,
+        key=lambda c: (c.get("score", 0), c.get("position", 0)),
+        reverse=True,
+    )
+
+    if not scored_candidates:
+        return None
+
+    best = scored_candidates[0]
+    best_score = best.get("score", 0)
+
+    if best_score < min_score:
+        return None
+
+    if len(scored_candidates) > 1:
+        second_best = scored_candidates[1]
+        second_score = second_best.get("score", 0)
+
+        if (best_score - second_score) < 8:
+            return None
+
+    return best.get("value")
 
 def enrich_normalized_invoice_data(
     extracted_text: str,

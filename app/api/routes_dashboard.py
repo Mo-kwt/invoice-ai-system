@@ -1,6 +1,8 @@
 import csv
 import io
 import json
+import shutil
+from pathlib import Path
 
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -15,7 +17,7 @@ from app.db.crud import (
     get_invoice_records_by_status,
 )
 from app.services.file_service import save_upload_file
-from app.services.pdf_service import extract_text_from_pdf
+from app.services.pdf_service import extract_text_from_pdf, render_first_page_to_image
 from app.services.ai_extraction_service import process_document_with_ai
 from app.services.validation_service import validate_invoice_data
 from app.schemas.invoice import InvoiceData
@@ -123,7 +125,10 @@ def _apply_field_review_flag_adjustments(
         "items_missing_but_table_detected",
         "items_not_reliably_detected",
     }
-    compound_count = len([flag for flag in flags_present if flag in compound_high_risk_flags])
+
+    compound_count = len(
+        [flag for flag in flags_present if flag in compound_high_risk_flags]
+    )
 
     if compound_count >= 3:
         adjusted_score = min(adjusted_score, 60.0)
@@ -183,13 +188,7 @@ def _compute_dashboard_review_status(
         used_vision = debug_info.get("used_vision_fallback", False)
         text_length = debug_info.get("text_length", 0)
 
-        if (
-            no_items
-            and no_date
-            and used_fallback
-            and used_vision
-            and text_length < 1000
-        ):
+        if no_items and no_date and used_fallback and used_vision and text_length < 1000:
             suspicious_total = True
 
     if suspicious_total:
@@ -203,8 +202,10 @@ def _compute_dashboard_review_status(
     )
 
     review_reasons = list(validation_result.get("review_reasons", []) or [])
+
     additional_field_review_flags = [
-        flag for flag in field_review_flags
+        flag
+        for flag in field_review_flags
         if flag in critical_flags and flag not in review_reasons
     ]
     if additional_field_review_flags:
@@ -219,6 +220,26 @@ def _compute_dashboard_review_status(
 
     status = "needs_review" if final_needs_review else "valid"
     return validation_result, status
+
+
+def _build_rendered_preview(saved_path: str, original_filename: str) -> str | None:
+    source_path = Path(saved_path)
+    processed_dir = Path("storage/processed")
+    processed_dir.mkdir(parents=True, exist_ok=True)
+
+    suffix = source_path.suffix.lower()
+    preview_name = f"{source_path.stem}_preview.png"
+
+    if suffix == ".pdf":
+        output_path = processed_dir / preview_name
+        return render_first_page_to_image(str(source_path), str(output_path))
+
+    if suffix in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}:
+        output_path = processed_dir / f"{source_path.stem}_preview{suffix}"
+        shutil.copyfile(source_path, output_path)
+        return str(output_path)
+
+    return None
 
 
 def _build_dashboard_row(record):
@@ -270,10 +291,31 @@ def _build_detail_context(record):
     invoice_data_dict = _safe_json_loads(record.invoice_data_json)
     validation_result_dict = _safe_json_loads(record.validation_result_json)
 
-    normalized_data = invoice_data_dict.get("normalized_invoice_fields", {}) if isinstance(invoice_data_dict, dict) else {}
-    raw_data = invoice_data_dict.get("raw_invoice_fields", {}) if isinstance(invoice_data_dict, dict) else {}
-    classification = invoice_data_dict.get("document_classification", {}) if isinstance(invoice_data_dict, dict) else {}
-    debug_info = invoice_data_dict.get("debug_info", {}) if isinstance(invoice_data_dict, dict) else {}
+    normalized_data = (
+        invoice_data_dict.get("normalized_invoice_fields", {})
+        if isinstance(invoice_data_dict, dict)
+        else {}
+    )
+    raw_data = (
+        invoice_data_dict.get("raw_invoice_fields", {})
+        if isinstance(invoice_data_dict, dict)
+        else {}
+    )
+    classification = (
+        invoice_data_dict.get("document_classification", {})
+        if isinstance(invoice_data_dict, dict)
+        else {}
+    )
+    debug_info = (
+        invoice_data_dict.get("debug_info", {})
+        if isinstance(invoice_data_dict, dict)
+        else {}
+    )
+    rendered_image_path = (
+        invoice_data_dict.get("rendered_image_path")
+        if isinstance(invoice_data_dict, dict)
+        else None
+    )
 
     if not normalized_data and not raw_data and isinstance(invoice_data_dict, dict):
         normalized_data = invoice_data_dict
@@ -294,6 +336,7 @@ def _build_detail_context(record):
         "field_review_flags": field_review_flags or [],
         "review_reasons": review_reasons or [],
         "warnings": warnings or [],
+        "rendered_image_path": rendered_image_path,
     }
 
 
@@ -329,16 +372,19 @@ def dashboard_upload_invoice(file: UploadFile = File(...)):
     db = SessionLocal()
     try:
         saved_path = save_upload_file(file)
-
         extracted_text = ""
+
         if file.filename.lower().endswith(".pdf"):
             extracted_text = extract_text_from_pdf(saved_path)
 
         ai_result = process_document_with_ai(extracted_text, pdf_path=saved_path)
+
         classification = ai_result["document_classification"]
         invoice_data = ai_result["invoice_data"]
         normalized_invoice_data = ai_result["normalized_invoice_data"]
         debug_info = ai_result.get("debug_info", {})
+
+        rendered_image_path = _build_rendered_preview(saved_path, file.filename)
 
         validation_result, status = _compute_dashboard_review_status(
             classification=classification,
@@ -356,6 +402,7 @@ def dashboard_upload_invoice(file: UploadFile = File(...)):
                 "raw_invoice_fields": invoice_data.model_dump() if hasattr(invoice_data, "model_dump") else invoice_data,
                 "normalized_invoice_fields": normalized_invoice_data,
                 "debug_info": debug_info,
+                "rendered_image_path": rendered_image_path,
             },
             validation_result=validation_result,
             status=status,
@@ -376,7 +423,6 @@ def dashboard_invoice_detail(request: Request, record_id: int):
 
         context = _build_detail_context(record)
         context["request"] = request
-
         return templates.TemplateResponse("invoice_detail.html", context)
     finally:
         db.close()
@@ -406,6 +452,7 @@ def dashboard_update_invoice(
         raw_data = invoice_data_dict.get("raw_invoice_fields", {}) if isinstance(invoice_data_dict, dict) else {}
         classification = invoice_data_dict.get("document_classification", {}) if isinstance(invoice_data_dict, dict) else {}
         debug_info = invoice_data_dict.get("debug_info", {}) if isinstance(invoice_data_dict, dict) else {}
+        rendered_image_path = invoice_data_dict.get("rendered_image_path") if isinstance(invoice_data_dict, dict) else None
 
         if not normalized_data:
             normalized_data = {}
@@ -431,6 +478,7 @@ def dashboard_update_invoice(
             "raw_invoice_fields": raw_data,
             "normalized_invoice_fields": normalized_data,
             "debug_info": debug_info,
+            "rendered_image_path": rendered_image_path,
         }
 
         record.invoice_data_json = json.dumps(updated_invoice_payload, ensure_ascii=False)
