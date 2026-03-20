@@ -1017,6 +1017,47 @@ def find_strong_total_in_text(text: str, min_score: int = 60):
 
     return best.get("value")
 
+def _looks_like_clean_arabic_vendor_name(value: str | None) -> bool:
+    if not value:
+        return False
+
+    text = str(value).strip()
+    if len(text) < 12:
+        return False
+
+    strong_company_tokens = [
+        "مؤسسة",
+        "شركة",
+        "مكتب",
+        "مجموعة",
+        "مركز",
+        "مصنع",
+        "معرض",
+    ]
+
+    address_tokens = [
+        "شارع",
+        "منطقة",
+        "الشويخ",
+        "الصناعية",
+        "العنوان",
+        "قطعة",
+        "قسيمة",
+        "بناية",
+        "دور",
+        "محل",
+        "الكويت",
+    ]
+
+    has_company_token = any(token in text for token in strong_company_tokens)
+    has_address_token = any(token in text for token in address_tokens)
+
+    arabic_count = sum(1 for ch in text if "\u0600" <= ch <= "\u06FF")
+
+    # اسم جهة عربي واضح وفيه دلالة مؤسسة/شركة،
+    # ولا يبدو كسطر عنوان طويل
+    return has_company_token and arabic_count >= 8 and not has_address_token
+
 def enrich_normalized_invoice_data(
     extracted_text: str,
     raw_invoice_data: dict,
@@ -1024,11 +1065,19 @@ def enrich_normalized_invoice_data(
 ):
     result = deepcopy(normalized_invoice_data)
 
-    result["vendor_name"] = cleanup_vendor_name(result.get("vendor_name"))
+    current_vendor_name = result.get("vendor_name")
+    if _looks_like_clean_arabic_vendor_name(current_vendor_name):
+        result["vendor_name"] = current_vendor_name.strip()
+    else:
+        result["vendor_name"] = cleanup_vendor_name(current_vendor_name)
+
     if not result.get("vendor_name"):
         weak_vendor_name = find_vendor_name_in_weak_text(extracted_text)
         if weak_vendor_name:
-            result["vendor_name"] = cleanup_vendor_name(weak_vendor_name)
+            if _looks_like_clean_arabic_vendor_name(weak_vendor_name):
+                result["vendor_name"] = weak_vendor_name.strip()
+            else:
+                result["vendor_name"] = cleanup_vendor_name(weak_vendor_name)
 
     raw_currency = raw_invoice_data.get("currency")
     if raw_currency:

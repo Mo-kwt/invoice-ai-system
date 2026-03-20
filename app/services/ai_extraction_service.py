@@ -15,6 +15,32 @@ from app.services.document_classifier_service import classify_document
 from app.services.normalization_service import normalize_invoice_data
 from app.services.postprocessing_service import enrich_normalized_invoice_data
 from app.services.vision_extraction_service import extract_invoice_data_from_image
+from app.services.pdf_service import render_first_page_to_image
+
+def _is_suspicious_total(total, extracted_text, validation_result):
+    if total is None:
+        return True
+
+    try:
+        amount = float(total)
+    except (TypeError, ValueError):
+        return True
+
+    text_value = str(total).strip()
+
+    # 1) رقم صغير بدون decimal (مثل 85 بدل 85.000)
+    if amount < 100 and "." not in text_value and "," not in text_value:
+        return True
+
+    # 2) نص ضعيف OCR
+    if validation_result.get("weak_invoice_override"):
+        return True
+
+    # 3) نص قصير جدًا
+    if len(extracted_text or "") < 80:
+        return True
+
+    return False
 
 client = OpenAI(api_key=settings.openai_api_key)
 
@@ -335,8 +361,10 @@ def _should_use_vision_fallback(
     classification: dict,
     normalized_data: dict,
     text: str,
+    validation_result: Optional[dict] = None,
 ) -> tuple[bool, list[str]]:
     reasons = []
+    validation_result = validation_result or {}
 
     if not pdf_path:
         return False, reasons
@@ -352,6 +380,10 @@ def _should_use_vision_fallback(
 
     if text_length >= 150 and len(missing_fields) >= 2:
         reasons.append("ocr_text_present_but_not_sufficient")
+
+    total_value = normalized_data.get("total")
+    if _is_suspicious_total(total_value, text, validation_result):
+        reasons.append("suspicious_total_detected")
 
     should_use = len(reasons) > 0
     return should_use, reasons
@@ -1047,6 +1079,7 @@ def process_document_with_ai(text: str, pdf_path: Optional[str] = None) -> dict:
         final_invoice_data = InvoiceData(**merged_data)
         final_normalized_data = normalize_invoice_data(final_invoice_data)
 
+
     should_use_vision, vision_fallback_reasons = _should_use_vision_fallback(
         pdf_path=pdf_path,
         classification=classification,
@@ -1055,25 +1088,36 @@ def process_document_with_ai(text: str, pdf_path: Optional[str] = None) -> dict:
     )
 
     if should_use_vision and pdf_path:
-        image_path = str(Path(pdf_path).with_suffix(".png"))
+        rendered_image_path = str(Path(pdf_path).with_suffix(".vision_preview.png"))
+        image_path = render_first_page_to_image(pdf_path, rendered_image_path)
 
-        vision_invoice_data = extract_invoice_data_from_image(
-            image_path=image_path,
-            current_text=text,
-            current_data=final_normalized_data,
-        )
+        if image_path:
+            vision_invoice_data = extract_invoice_data_from_image(
+                image_path=image_path,
+                current_text=text,
+                current_data=final_normalized_data,
+            )
 
-        print("DEBUG_VISION_RESULT:", vision_invoice_data.model_dump())
+           
+            base_payload = final_invoice_data.model_dump()
+            base_normalized_total = final_normalized_data.get("total")
 
-        merged_data = _merge_invoice_data(
-            base_data=final_invoice_data.model_dump(),
-            fallback_data=vision_invoice_data.model_dump(),
-            prefer_override_fields={"total"},
-        )
+            merged_data = _merge_invoice_data(
+                base_data=final_invoice_data.model_dump(),
+                fallback_data=vision_invoice_data.model_dump(),
+                prefer_override_fields={"vendor_name", "invoice_number", "currency", "total"},
+            )
 
-        final_invoice_data = InvoiceData(**merged_data)
-        final_normalized_data = normalize_invoice_data(final_invoice_data)
-        used_vision_fallback = True
+            final_invoice_data = InvoiceData(**merged_data)
+            final_normalized_data = normalize_invoice_data(final_invoice_data)
+
+            if base_normalized_total is not None:
+                final_invoice_data.total = base_normalized_total
+                final_normalized_data["total"] = base_normalized_total
+
+            final_invoice_data = InvoiceData(**merged_data)
+            final_normalized_data = normalize_invoice_data(final_invoice_data)
+            used_vision_fallback = True
 
     enriched_invoice_data = enrich_normalized_invoice_data(
         extracted_text=text,
@@ -1081,6 +1125,7 @@ def process_document_with_ai(text: str, pdf_path: Optional[str] = None) -> dict:
         normalized_invoice_data=final_normalized_data,
     )
 
+    
     field_evidence = _build_field_evidence(
         text=text,
         normalized_invoice_data=enriched_invoice_data,
