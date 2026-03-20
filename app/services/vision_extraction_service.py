@@ -82,9 +82,18 @@ For invoice number extraction:
 For invoice date extraction:
 - Prefer values near:
   invoice date, date, تاريخ الفاتورة, التاريخ
-- Prefer header-area dates, not dates inside notes or table areas.
-- Do not confuse with due date, delivery date, ship date, or print date.
-- If a handwritten or printed date is visible near the date label, extract it.
+- The invoice date is usually in the header area, not inside the item table or amount summary.
+- The invoice date may be handwritten or printed.
+- Accept common date formats such as:
+  DD/MM/YYYY, D/M/YYYY, DD-MM-YYYY, YYYY/MM/DD
+- If a handwritten date is visible near the header/date area, extract it exactly as a normal calendar date.
+- Prefer 4-digit years when visible.
+- Do not confuse invoice date with:
+  due date, delivery date, ship date, print date, reference date, or row/table numbers.
+- Do not use isolated numbers from the item table, quantity column, price column, or total boxes as invoice_date.
+- If multiple date-like values are visible, prefer the one nearest to the header/date label.
+- If the visible handwritten date looks like 12/02/2025, return 12/02/2025.
+- If the date is not clearly readable, return null.
 
 For total extraction:
 - Total must be the final payable amount, not a line amount.

@@ -1050,6 +1050,8 @@ def process_document_with_ai(text: str, pdf_path: Optional[str] = None) -> dict:
     invoice_data = extract_invoice_data_from_text(text)
     normalized_invoice_data = normalize_invoice_data(invoice_data)
 
+    print("DATE_1:", normalized_invoice_data.get("invoice_date"))
+
     missing_fields_before_fallback = _find_missing_fields(normalized_invoice_data)
 
     needs_ai_fallback, fallback_reasons, fallback_decision_debug = _should_use_fallback(
@@ -1079,6 +1081,7 @@ def process_document_with_ai(text: str, pdf_path: Optional[str] = None) -> dict:
         final_invoice_data = InvoiceData(**merged_data)
         final_normalized_data = normalize_invoice_data(final_invoice_data)
 
+        print("DATE_2:", final_normalized_data.get("invoice_date"))
 
     should_use_vision, vision_fallback_reasons = _should_use_vision_fallback(
         pdf_path=pdf_path,
@@ -1098,7 +1101,8 @@ def process_document_with_ai(text: str, pdf_path: Optional[str] = None) -> dict:
                 current_data=final_normalized_data,
             )
 
-           
+            print("DATE_VISION:", vision_invoice_data.model_dump().get("invoice_date"))
+
             base_payload = final_invoice_data.model_dump()
             base_normalized_total = final_normalized_data.get("total")
 
@@ -1125,7 +1129,8 @@ def process_document_with_ai(text: str, pdf_path: Optional[str] = None) -> dict:
         normalized_invoice_data=final_normalized_data,
     )
 
-    
+    print("DATE_3:", enriched_invoice_data.get("invoice_date"))
+
     field_evidence = _build_field_evidence(
         text=text,
         normalized_invoice_data=enriched_invoice_data,

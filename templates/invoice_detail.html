@@ -321,6 +321,23 @@
       min-height: 88px;
     }
 
+    .info-card-warning {
+      border: 1px solid #f59e0b;
+      background: #fffaf0;
+    }
+
+    .inline-flag {
+      display: inline-block;
+      margin-right: 8px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #92400e;
+      background: #fef3c7;
+      vertical-align: middle;
+    }
+    
     .info-card .label {
       font-size: 12px;
       color: var(--muted);
@@ -732,18 +749,33 @@
           </div>
 
           <div class="info-grid">
-            <div class="info-card">
-              <div class="label">اسم الجهة</div>
+            <div class="info-card {% if not data.get('vendor_name') %}info-card-warning{% endif %}">
+              <div class="label">
+                اسم الجهة
+                {% if not data.get('vendor_name') %}
+                  <span class="inline-flag">يحتاج مراجعة</span>
+                {% endif %}
+              </div>
               <div class="value">{{ data.get("vendor_name") or "مفقود" }}</div>
             </div>
 
-            <div class="info-card">
-              <div class="label">رقم الفاتورة</div>
+            <div class="info-card {% if not data.get('invoice_number') or 'invoice_number_missing' in field_review_flags or 'invoice_number_missing_but_candidate_exists' in field_review_flags or 'invoice_number_low_confidence' in field_review_flags or 'invoice_number_ambiguous' in field_review_flags %}info-card-warning{% endif %}">
+              <div class="label">
+                رقم الفاتورة
+                {% if not data.get('invoice_number') or 'invoice_number_missing' in field_review_flags or 'invoice_number_missing_but_candidate_exists' in field_review_flags or 'invoice_number_low_confidence' in field_review_flags or 'invoice_number_ambiguous' in field_review_flags %}
+                  <span class="inline-flag">يحتاج مراجعة</span>
+                {% endif %}
+              </div>
               <div class="value">{{ data.get("invoice_number") or "مفقود" }}</div>
             </div>
 
-            <div class="info-card">
-              <div class="label">التاريخ</div>
+            <div class="info-card {% if not data.get('invoice_date') or 'invoice_date_missing' in review_reasons %}info-card-warning{% endif %}">
+              <div class="label">
+                التاريخ
+                {% if not data.get('invoice_date') or 'invoice_date_missing' in review_reasons %}
+                  <span class="inline-flag">يحتاج مراجعة</span>
+                {% endif %}
+              </div>
               <div class="value">{{ data.get("invoice_date") or "مفقود" }}</div>
             </div>
 
@@ -773,11 +805,17 @@
               </div>
             </div>
 
-            <div class="info-card">
-              <div class="label">الإجمالي</div>
+            <div class="info-card {% if data.get('total') is none or 'total_low_confidence_due_to_weak_ocr' in review_reasons %}info-card-warning{% endif %}">
+              <div class="label">
+                الإجمالي
+                {% if data.get('total') is none or 'total_low_confidence_due_to_weak_ocr' in review_reasons %}
+                  <span class="inline-flag">يحتاج مراجعة</span>
+                {% endif %}
+              </div>
               <div class="value">
                 {% if data.get("total") is not none %}{{ data.get("total") }}{% else %}مفقود{% endif %}
               </div>
+            </div>
             </div>
           </div>
 
