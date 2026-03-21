@@ -205,9 +205,9 @@
 
     .review-layout {
       display: grid;
-      grid-template-columns: minmax(420px, 1.05fr) minmax(420px, 1fr);
+      grid-template-columns: 1fr 1fr;
       gap: 20px;
-      align-items: start;
+      align-items: stretch;
       margin-bottom: 20px;
       direction: ltr;
     }
@@ -224,15 +224,9 @@
 
     .layout {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr;
       gap: 20px;
       align-items: start;
-    }
-
-    @media (max-width: 1024px) {
-      .layout {
-        grid-template-columns: 1fr;
-      }
     }
 
     .stack {
@@ -337,7 +331,7 @@
       background: #fef3c7;
       vertical-align: middle;
     }
-    
+
     .info-card .label {
       font-size: 12px;
       color: var(--muted);
@@ -349,34 +343,6 @@
       font-weight: 800;
       word-break: break-word;
       line-height: 1.5;
-    }
-
-    .chips {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .chip {
-      background: #f3f4f6;
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 8px 12px;
-      border-radius: 999px;
-      font-size: 13px;
-      font-weight: 700;
-    }
-
-    .chip-warning {
-      background: var(--warning-soft);
-      color: var(--warning);
-      border-color: #fde68a;
-    }
-
-    .chip-success {
-      background: var(--success-soft);
-      color: var(--success);
-      border-color: #bbf7d0;
     }
 
     .list {
@@ -398,7 +364,8 @@
       min-width: 680px;
     }
 
-    th, td {
+    th,
+    td {
       padding: 13px 14px;
       text-align: right;
       border-bottom: 1px solid var(--border);
@@ -447,6 +414,11 @@
       background: #fff;
     }
 
+    .input-warning {
+      border: 2px solid #f59e0b !important;
+      background: #fff7ed !important;
+    }
+
     .field input:focus {
       outline: none;
       border-color: var(--primary);
@@ -458,6 +430,18 @@
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .right-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .left-actions {
+      display: flex;
+      gap: 10px;
     }
 
     .candidate-list {
@@ -515,6 +499,44 @@
       padding: 16px 18px;
     }
 
+    .summary-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .summary-title {
+      font-weight: 800;
+    }
+
+    .count-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 40px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid var(--border);
+      background: #f3f4f6;
+      color: var(--muted);
+    }
+
+    .count-badge-success {
+      background: var(--success-soft);
+      color: var(--success);
+      border-color: #bbf7d0;
+    }
+
+    .count-badge-neutral {
+      background: #f3f4f6;
+      color: var(--muted);
+      border-color: var(--border);
+    }
+
     .code-box {
       background: #0f172a;
       color: #e5e7eb;
@@ -541,6 +563,7 @@
     }
 
     .preview-card {
+      flex: 1;
       display: flex;
       flex-direction: column;
       gap: 14px;
@@ -575,9 +598,11 @@
       border-radius: 16px;
       background: #fff;
       padding: 8px;
+      direction: ltr;
+      flex: 1;
+      min-height: 650px;
+      max-height: none;
       overflow: auto;
-      max-height: 780px;
-      min-height: 620px;
     }
 
     .preview-image-wrap {
@@ -586,6 +611,7 @@
       justify-content: center;
       min-height: 100%;
       padding: 12px;
+      direction: rtl;
     }
 
     .preview-image {
@@ -609,6 +635,9 @@
     .sticky-preview {
       position: sticky;
       top: 16px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
     }
 
     @media (max-width: 1100px) {
@@ -617,9 +646,15 @@
       }
 
       .preview-frame {
-        max-height: 620px;
-        min-height: 420px;
+        min-height: 520px;
       }
+    }
+
+    .tech-section {
+      padding: 0;
+      border: 0;
+      box-shadow: none;
+      background: transparent;
     }
   </style>
 </head>
@@ -640,6 +675,38 @@
       </div>
     </div>
 
+    {% set reason_map = {
+      "invoice_date_low_confidence": "تاريخ الفاتورة غير واضح",
+      "invoice_number_low_confidence": "رقم الفاتورة غير واضح",
+      "invoice_number_differs_from_top_candidate": "رقم الفاتورة مختلف عن القراءة المرجحة",
+      "invoice_number_missing": "رقم الفاتورة مفقود",
+      "invoice_date_missing": "تاريخ الفاتورة مفقود",
+      "total_low_confidence_due_to_weak_ocr": "الإجمالي غير واضح بسبب ضعف القراءة"
+    } %}
+
+    {% set ns = namespace(translated_reasons=[]) %}
+    {% if review_reasons %}
+      {% for r in review_reasons %}
+        {% if reason_map.get(r) and ns.translated_reasons|length < 2 %}
+          {% set _ = ns.translated_reasons.append(reason_map.get(r)) %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+
+    {% if validation_result.get("needs_review") %}
+      <div class="decision-box decision-review" style="margin-bottom: 20px;">
+        ⚠️ المستند يحتاج مراجعة قبل الاعتماد النهائي
+        {% if ns.translated_reasons %}
+          <div style="margin-top:8px; font-size:14px; line-height:1.8;">
+            السبب:
+            {% for reason in ns.translated_reasons %}
+              {{ reason }}{% if not loop.last %} + {% endif %}
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
     <div class="hero">
       <div class="hero-head">
         <div>
@@ -656,7 +723,7 @@
           {% elif record.status == "valid" %}
             <span class="badge badge-valid">صالح</span>
           {% elif record.status == "needs_review" %}
-            <span class="badge badge-review">يحتاج مراجعة</span>
+            <span class="badge badge-review">قيد المراجعة</span>
           {% elif record.status == "rejected" %}
             <span class="badge badge-rejected">مرفوض</span>
           {% elif record.status == "not_invoice" %}
@@ -688,8 +755,13 @@
           <div class="value">{{ data.get("invoice_number") or "مفقود" }}</div>
         </div>
 
-        <div class="hero-stat">
-          <div class="label">التاريخ</div>
+        <div class="hero-stat {% if not data.get('invoice_date') or 'invoice_date_low_confidence' in field_review_flags %}info-card-warning{% endif %}">
+          <div class="label">
+            التاريخ
+            {% if not data.get('invoice_date') or 'invoice_date_low_confidence' in field_review_flags %}
+              <span class="inline-flag">تحقق</span>
+            {% endif %}
+          </div>
           <div class="value">{{ data.get("invoice_date") or "مفقود" }}</div>
         </div>
 
@@ -732,9 +804,7 @@
               <div class="preview-meta">
                 استخدم التكبير والتدوير للتعامل مع الفواتير المائلة أو النصوص الصغيرة. هذه النسخة مخصصة للمراجعة البصرية اليدوية المستقرة.
               </div>
-            {% endif %}
-
-            {% if not rendered_image_path %}
+            {% else %}
               <p class="empty">لا توجد معاينة متاحة لهذا المستند.</p>
             {% endif %}
           </div>
@@ -759,20 +829,23 @@
               <div class="value">{{ data.get("vendor_name") or "مفقود" }}</div>
             </div>
 
-            <div class="info-card {% if not data.get('invoice_number') or 'invoice_number_missing' in field_review_flags or 'invoice_number_missing_but_candidate_exists' in field_review_flags or 'invoice_number_low_confidence' in field_review_flags or 'invoice_number_ambiguous' in field_review_flags %}info-card-warning{% endif %}">
+            {% set invoice_suggested = field_evidence.get("suggested_invoice_number") %}
+            {% set invoice_confidence = field_evidence.get("suggested_invoice_number_confidence", "low") %}
+
+            <div class="info-card {% if not data.get('invoice_number') or (invoice_suggested and invoice_suggested != data.get('invoice_number') and invoice_confidence == 'high') %}info-card-warning{% endif %}">
               <div class="label">
                 رقم الفاتورة
-                {% if not data.get('invoice_number') or 'invoice_number_missing' in field_review_flags or 'invoice_number_missing_but_candidate_exists' in field_review_flags or 'invoice_number_low_confidence' in field_review_flags or 'invoice_number_ambiguous' in field_review_flags %}
+                {% if not data.get('invoice_number') or (invoice_suggested and invoice_suggested != data.get('invoice_number') and invoice_confidence == 'high') %}
                   <span class="inline-flag">يحتاج مراجعة</span>
                 {% endif %}
               </div>
               <div class="value">{{ data.get("invoice_number") or "مفقود" }}</div>
             </div>
 
-            <div class="info-card {% if not data.get('invoice_date') or 'invoice_date_missing' in review_reasons %}info-card-warning{% endif %}">
+            <div class="info-card {% if not data.get('invoice_date') or 'invoice_date_low_confidence' in field_review_flags %}info-card-warning{% endif %}">
               <div class="label">
                 التاريخ
-                {% if not data.get('invoice_date') or 'invoice_date_missing' in review_reasons %}
+                {% if not data.get('invoice_date') or 'invoice_date_low_confidence' in field_review_flags %}
                   <span class="inline-flag">يحتاج مراجعة</span>
                 {% endif %}
               </div>
@@ -816,36 +889,48 @@
                 {% if data.get("total") is not none %}{{ data.get("total") }}{% else %}مفقود{% endif %}
               </div>
             </div>
-            </div>
           </div>
 
+          {% set items_count = data.get("items", []) | length %}
           <h3>العناصر المستخرجة</h3>
-          {% if data.get("items") %}
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>الوصف</th>
-                    <th>الكمية</th>
-                    <th>سعر الوحدة</th>
-                    <th>الإجمالي</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for item in data.get("items", []) %}
-                    <tr>
-                      <td>{{ item.get("description") or "-" }}</td>
-                      <td>{{ item.get("quantity") if item.get("quantity") is not none else "-" }}</td>
-                      <td>{{ item.get("unit_price") if item.get("unit_price") is not none else "-" }}</td>
-                      <td>{{ item.get("total_price") if item.get("total_price") is not none else "-" }}</td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
+          <details class="disclosure">
+            <summary>
+              <div class="summary-row">
+                <span class="summary-title">العناصر المستخرجة</span>
+                <span class="count-badge {% if items_count > 0 %}count-badge-success{% else %}count-badge-neutral{% endif %}">
+                  {% if items_count > 0 %}{{ items_count }}{% else %}0{% endif %}
+                </span>
+              </div>
+            </summary>
+            <div class="disclosure-content">
+              {% if data.get("items") %}
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>الوصف</th>
+                        <th>الكمية</th>
+                        <th>سعر الوحدة</th>
+                        <th>الإجمالي</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for item in data.get("items", []) %}
+                        <tr>
+                          <td>{{ item.get("description") or "-" }}</td>
+                          <td>{{ item.get("quantity") if item.get("quantity") is not none else "-" }}</td>
+                          <td>{{ item.get("unit_price") if item.get("unit_price") is not none else "-" }}</td>
+                          <td>{{ item.get("total_price") if item.get("total_price") is not none else "-" }}</td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% else %}
+                <p class="empty">لا توجد عناصر مستخرجة.</p>
+              {% endif %}
             </div>
-          {% else %}
-            <p class="empty">لا توجد عناصر مستخرجة.</p>
-          {% endif %}
+          </details>
         </div>
 
         <div class="section">
@@ -867,8 +952,19 @@
               </div>
 
               <div class="field">
-                <label>التاريخ</label>
-                <input type="text" name="invoice_date" value="{{ data.get('invoice_date') or '' }}">
+                <label>
+                  التاريخ
+                  {% if not data.get('invoice_date') or 'invoice_date_low_confidence' in field_review_flags %}
+                    <span class="inline-flag">يحتاج مراجعة</span>
+                  {% endif %}
+                </label>
+
+                <input
+                  type="text"
+                  name="invoice_date"
+                  value="{{ data.get('invoice_date') or '' }}"
+                  class="{% if not data.get('invoice_date') or 'invoice_date_low_confidence' in field_review_flags %}input-warning{% endif %}"
+                >
               </div>
 
               <div class="field">
@@ -898,7 +994,14 @@
             </div>
 
             <div class="form-actions">
-              <button class="btn btn-primary" type="submit">حفظ التعديلات</button>
+              <div class="right-actions">
+                <button class="btn btn-primary" type="submit">حفظ التعديلات</button>
+              </div>
+
+              <div class="left-actions">
+                <button class="btn btn-success" type="submit" formaction="/dashboard/invoices/{{ record.id }}/approve">اعتماد</button>
+                <button class="btn btn-danger" type="submit" formaction="/dashboard/invoices/{{ record.id }}/reject">رفض</button>
+              </div>
             </div>
           </form>
         </div>
@@ -907,6 +1010,7 @@
 
     <div class="layout">
       <div class="stack">
+        {% if False %}
         <div class="section">
           <div class="section-head">
             <h2>قرار المراجعة</h2>
@@ -927,205 +1031,187 @@
             </div>
           {% endif %}
 
-          <div class="info-grid">
-            <div class="info-card">
-              <div class="label">حالة الصلاحية</div>
-              <div class="value">{% if validation_result.get("is_valid") %}Valid{% else %}Invalid{% endif %}</div>
-            </div>
-
-            <div class="info-card">
-              <div class="label">هل يحتاج مراجعة؟</div>
-              <div class="value">{% if validation_result.get("needs_review") %}Yes{% else %}No{% endif %}</div>
-            </div>
-          </div>
-
           {% if review_reasons %}
             <h3>أسباب القرار</h3>
             <ul class="list">
               {% for reason in review_reasons %}
-                <li>{{ reason }}</li>
+                {% if reason_map.get(reason) %}
+                  <li>{{ reason_map.get(reason) }}</li>
+                {% endif %}
               {% endfor %}
             </ul>
           {% endif %}
-
-          {% if warnings %}
-            <h3>الملاحظات</h3>
-            <ul class="list">
-              {% for warn in warnings %}
-                <li>{{ warn }}</li>
-              {% endfor %}
-            </ul>
-          {% endif %}
-
-          <h3>إشارات المراجعة على مستوى الحقول</h3>
-          {% if field_review_flags %}
-            <div class="chips">
-              {% for flag in field_review_flags %}
-                <span class="chip chip-warning">{{ flag }}</span>
-              {% endfor %}
-            </div>
-          {% else %}
-            <div class="chips">
-              <span class="chip chip-success">لا توجد إشارات حرجة</span>
-            </div>
-          {% endif %}
         </div>
+        {% endif %}
 
         <div class="section">
-          <div class="section-head">
-            <h2>البيانات الخام قبل التنظيف</h2>
-            <div class="section-note">القيم قبل التطبيع النهائي، للمقارنة فقط.</div>
-          </div>
-
-          <div class="info-grid">
-            <div class="info-card">
-              <div class="label">اسم الجهة</div>
-              <div class="value">{{ raw_data.get("vendor_name") or "-" }}</div>
-            </div>
-
-            <div class="info-card">
-              <div class="label">رقم الفاتورة</div>
-              <div class="value">{{ raw_data.get("invoice_number") or "-" }}</div>
-            </div>
-
-            <div class="info-card">
-              <div class="label">التاريخ</div>
-              <div class="value">{{ raw_data.get("invoice_date") or "-" }}</div>
-            </div>
-
-            <div class="info-card">
-              <div class="label">الإجمالي</div>
-              <div class="value">{{ raw_data.get("total") or "-" }}</div>
-            </div>
-
-            <div class="info-card">
-              <div class="label">العملة</div>
-              <div class="value">{{ raw_data.get("currency") or "-" }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="stack">
-        <div class="section">
-          <div class="section-head">
-            <h2>ملخص الثقة للحقول الحساسة</h2>
-            <div class="section-note">إشارات مساندة لرقم الفاتورة، التاريخ، واكتشاف جدول العناصر.</div>
-          </div>
-
-          <div class="info-grid">
-            <div class="info-card">
-              <div class="label">رقم الفاتورة المقترح</div>
-              <div class="value">{{ field_evidence.get("suggested_invoice_number") or "لا يوجد" }}</div>
-            </div>
-
-            <div class="info-card">
-              <div class="label">ثقة رقم الفاتورة</div>
-              <div class="value">{{ field_evidence.get("suggested_invoice_number_confidence", "-") }}</div>
-            </div>
-
-            <div class="info-card">
-              <div class="label">تاريخ الفاتورة المقترح</div>
-              <div class="value">{{ field_evidence.get("suggested_invoice_date") or "لا يوجد" }}</div>
-            </div>
-
-            <div class="info-card">
-              <div class="label">ثقة تاريخ الفاتورة</div>
-              <div class="value">{{ field_evidence.get("suggested_invoice_date_confidence", "-") }}</div>
-            </div>
-
-            <div class="info-card">
-              <div class="label">هل تم اكتشاف جدول عناصر؟</div>
-              <div class="value">{% if field_evidence.get("items_table_detected") %}نعم{% else %}لا{% endif %}</div>
-            </div>
-
-            <div class="info-card">
-              <div class="label">ثقة جدول العناصر</div>
-              <div class="value">{{ field_evidence.get("items_table_confidence", "-") }}</div>
-            </div>
-          </div>
-
-          <div class="divider"></div>
-
-          <h3>مرشحات رقم الفاتورة</h3>
-          {% if field_evidence.get("invoice_number_candidates") %}
-            <div class="candidate-list">
-              {% for candidate in field_evidence.get("invoice_number_candidates", []) %}
-                <div class="candidate-card">
-                  <div class="candidate-title">{{ candidate.get("value") }}</div>
-                  <div class="candidate-meta">
-                    score: {{ candidate.get("score") }}<br>
-                    reason: {{ candidate.get("reason") }}
-                  </div>
-                </div>
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="empty">لا توجد مرشحات.</p>
-          {% endif %}
-
-          <h3>مرشحات تاريخ الفاتورة</h3>
-          {% if field_evidence.get("invoice_date_candidates") %}
-            <div class="candidate-list">
-              {% for candidate in field_evidence.get("invoice_date_candidates", []) %}
-                <div class="candidate-card">
-                  <div class="candidate-title">{{ candidate.get("value") }}</div>
-                  <div class="candidate-meta">
-                    score: {{ candidate.get("score") }}<br>
-                    reason: {{ candidate.get("reason") }}
-                  </div>
-                </div>
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="empty">لا توجد مرشحات.</p>
-          {% endif %}
-        </div>
-
-        <div class="section">
-          <div class="section-head">
-            <h2>الأسطر الداعمة لاكتشاف جدول العناصر</h2>
-            <div class="section-note">هذه الأسطر ساعدت النظام على استنتاج وجود جدول عناصر.</div>
-          </div>
-
-          {% if field_evidence.get("items_table_lines") %}
-            <div class="candidate-list">
-              {% for line in field_evidence.get("items_table_lines", []) %}
-                <div class="candidate-card">
-                  <div class="candidate-meta">
-                    <strong>score:</strong> {{ line.get("score") }}<br>
-                    <strong>tokens:</strong> {{ line.get("tokens") }}
-                  </div>
-                  <div style="margin-top:10px; line-height:1.9; word-break: break-word;">
-                    {{ line.get("line") }}
-                  </div>
-                </div>
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="empty">لا توجد أسطر داعمة متاحة.</p>
-          {% endif %}
-        </div>
-
-        <div class="section">
-          <details class="disclosure" open>
-            <summary>النص المستخرج</summary>
+          <details class="disclosure">
+            <summary>التفاصيل التقنية</summary>
             <div class="disclosure-content">
-              <div class="code-box">{{ record.extracted_text }}</div>
+              <div class="tech-section">
+                <div class="section-head">
+                  <h2>البيانات الخام قبل التنظيف</h2>
+                  <div class="section-note">القيم قبل التطبيع النهائي، للمقارنة فقط.</div>
+                </div>
+
+                <div class="info-grid">
+                  <div class="info-card">
+                    <div class="label">اسم الجهة</div>
+                    <div class="value">{{ raw_data.get("vendor_name") or "-" }}</div>
+                  </div>
+
+                  <div class="info-card">
+                    <div class="label">رقم الفاتورة</div>
+                    <div class="value">{{ raw_data.get("invoice_number") or "-" }}</div>
+                  </div>
+
+                  <div class="info-card">
+                    <div class="label">التاريخ</div>
+                    <div class="value">{{ raw_data.get("invoice_date") or "-" }}</div>
+                  </div>
+
+                  <div class="info-card">
+                    <div class="label">الإجمالي</div>
+                    <div class="value">{{ raw_data.get("total") or "-" }}</div>
+                  </div>
+
+                  <div class="info-card">
+                    <div class="label">العملة</div>
+                    <div class="value">{{ raw_data.get("currency") or "-" }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="divider"></div>
+
+              <div class="tech-section">
+                <div class="section-head">
+                  <h2>ملخص الثقة للحقول الحساسة</h2>
+                  <div class="section-note">إشارات مساندة لرقم الفاتورة، التاريخ، واكتشاف جدول العناصر.</div>
+                </div>
+
+                <div class="info-grid">
+                  {% set suggested = field_evidence.get("suggested_invoice_number") %}
+                  {% set confidence = field_evidence.get("suggested_invoice_number_confidence", "low") %}
+
+                  <div class="info-card">
+                    <div class="label">رقم الفاتورة المقترح</div>
+                    {% if suggested and confidence == "high" %}
+                      <div class="value">{{ suggested }}</div>
+                    {% else %}
+                      <div class="value">لا يوجد</div>
+                    {% endif %}
+                  </div>
+
+                  <div class="info-card">
+                    <div class="label">ثقة رقم الفاتورة</div>
+                    <div class="value">{{ field_evidence.get("suggested_invoice_number_confidence", "-") }}</div>
+                  </div>
+
+                  <div class="info-card">
+                    <div class="label">تاريخ الفاتورة المقترح</div>
+                    <div class="value">{{ field_evidence.get("suggested_invoice_date") or "لا يوجد" }}</div>
+                  </div>
+
+                  <div class="info-card">
+                    <div class="label">ثقة تاريخ الفاتورة</div>
+                    <div class="value">{{ field_evidence.get("suggested_invoice_date_confidence", "-") }}</div>
+                  </div>
+
+                  <div class="info-card">
+                    <div class="label">هل تم اكتشاف جدول عناصر؟</div>
+                    <div class="value">{% if field_evidence.get("items_table_detected") %}نعم{% else %}لا{% endif %}</div>
+                  </div>
+
+                  <div class="info-card">
+                    <div class="label">ثقة جدول العناصر</div>
+                    <div class="value">{{ field_evidence.get("items_table_confidence", "-") }}</div>
+                  </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <h3>مرشحات رقم الفاتورة</h3>
+                {% set strong_candidates = field_evidence.get("invoice_number_candidates", []) | selectattr("score", ">=", 7) | list %}
+                {% if strong_candidates %}
+                  <div class="candidate-list">
+                    {% for candidate in strong_candidates %}
+                      <div class="candidate-card">
+                        <div class="candidate-title">{{ candidate.get("value") }}</div>
+                        <div class="candidate-meta">
+                          score: {{ candidate.get("score") }}<br>
+                          reason: {{ candidate.get("reason") }}
+                        </div>
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <p class="empty">لا توجد مرشحات موثوقة.</p>
+                {% endif %}
+
+                <h3>مرشحات تاريخ الفاتورة</h3>
+                {% if field_evidence.get("invoice_date_candidates") %}
+                  <div class="candidate-list">
+                    {% for candidate in field_evidence.get("invoice_date_candidates", []) %}
+                      <div class="candidate-card">
+                        <div class="candidate-title">{{ candidate.get("value") }}</div>
+                        <div class="candidate-meta">
+                          score: {{ candidate.get("score") }}<br>
+                          reason: {{ candidate.get("reason") }}
+                        </div>
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <p class="empty">لا توجد مرشحات.</p>
+                {% endif %}
+              </div>
+
+              <div class="divider"></div>
+
+              <div class="tech-section">
+                <div class="section-head">
+                  <h2>الأسطر الداعمة لاكتشاف جدول العناصر</h2>
+                  <div class="section-note">هذه الأسطر ساعدت النظام على استنتاج وجود جدول عناصر.</div>
+                </div>
+
+                {% if field_evidence.get("items_table_lines") %}
+                  <div class="candidate-list">
+                    {% for line in field_evidence.get("items_table_lines", []) %}
+                      <div class="candidate-card">
+                        <div class="candidate-meta">
+                          <strong>score:</strong> {{ line.get("score") }}<br>
+                          <strong>tokens:</strong> {{ line.get("tokens") }}
+                        </div>
+                        <div style="margin-top:10px; line-height:1.9; word-break: break-word;">
+                          {{ line.get("line") }}
+                        </div>
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <p class="empty">لا توجد أسطر داعمة متاحة.</p>
+                {% endif %}
+              </div>
+
+              <div class="divider"></div>
+
+              <div class="tech-section">
+                <h2>النص المستخرج</h2>
+                <div class="code-box">{{ record.extracted_text }}</div>
+              </div>
+
+              {% if debug_info %}
+                <div class="divider"></div>
+
+                <div class="tech-section">
+                  <h2>معلومات التصحيح Debug Info</h2>
+                  <div class="code-box">{{ debug_info | tojson(indent=2) }}</div>
+                </div>
+              {% endif %}
             </div>
           </details>
         </div>
-
-        {% if debug_info %}
-          <div class="section">
-            <details class="disclosure">
-              <summary>معلومات التصحيح Debug Info</summary>
-              <div class="disclosure-content">
-                <div class="code-box">{{ debug_info | tojson(indent=2) }}</div>
-              </div>
-            </details>
-          </div>
-        {% endif %}
       </div>
     </div>
   </div>
