@@ -398,6 +398,9 @@ def process_uploaded_invoice(
         run.finished_at = datetime.utcnow()
         db.commit()
 
+        print("PIPELINE DEBUG used_fallback:", debug_info.get("used_fallback"))
+        print("PIPELINE DEBUG full debug_info:", debug_info)
+
         legacy_record = create_invoice_record(
             db=db,
             document_id=document.id,
@@ -414,6 +417,7 @@ def process_uploaded_invoice(
             },
             validation_result=validation_result,
             status=status,
+            used_fallback=debug_info.get("used_fallback", False),  # ✅ هذا السطر الجديد
         )
 
         return {

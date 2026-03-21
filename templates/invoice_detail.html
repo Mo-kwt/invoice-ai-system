@@ -693,7 +693,9 @@
       {% endfor %}
     {% endif %}
 
-    {% if validation_result.get("needs_review") %}
+    {% set invoice_date_missing = not data.get('invoice_date') %}
+
+    {% if validation_result.get("needs_review") and (not data.get("invoice_date") or not data.get("invoice_number")) %}
       <div class="decision-box decision-review" style="margin-bottom: 20px;">
         ⚠️ المستند يحتاج مراجعة قبل الاعتماد النهائي
         {% if ns.translated_reasons %}
@@ -755,10 +757,10 @@
           <div class="value">{{ data.get("invoice_number") or "مفقود" }}</div>
         </div>
 
-        <div class="hero-stat {% if not data.get('invoice_date') or 'invoice_date_low_confidence' in field_review_flags %}info-card-warning{% endif %}">
+        <div class="hero-stat {% if invoice_date_missing %}info-card-warning{% endif %}">
           <div class="label">
             التاريخ
-            {% if not data.get('invoice_date') or 'invoice_date_low_confidence' in field_review_flags %}
+            {% if invoice_date_missing %}
               <span class="inline-flag">تحقق</span>
             {% endif %}
           </div>
@@ -842,10 +844,10 @@
               <div class="value">{{ data.get("invoice_number") or "مفقود" }}</div>
             </div>
 
-            <div class="info-card {% if not data.get('invoice_date') or 'invoice_date_low_confidence' in field_review_flags %}info-card-warning{% endif %}">
+            <div class="info-card {% if invoice_date_missing %}info-card-warning{% endif %}">
               <div class="label">
                 التاريخ
-                {% if not data.get('invoice_date') or 'invoice_date_low_confidence' in field_review_flags %}
+                {% if invoice_date_missing %}
                   <span class="inline-flag">يحتاج مراجعة</span>
                 {% endif %}
               </div>
@@ -954,7 +956,7 @@
               <div class="field">
                 <label>
                   التاريخ
-                  {% if not data.get('invoice_date') or 'invoice_date_low_confidence' in field_review_flags %}
+                  {% if invoice_date_missing %}
                     <span class="inline-flag">يحتاج مراجعة</span>
                   {% endif %}
                 </label>
@@ -963,7 +965,7 @@
                   type="text"
                   name="invoice_date"
                   value="{{ data.get('invoice_date') or '' }}"
-                  class="{% if not data.get('invoice_date') or 'invoice_date_low_confidence' in field_review_flags %}input-warning{% endif %}"
+                  class="{% if invoice_date_missing %}input-warning{% endif %}"
                 >
               </div>
 

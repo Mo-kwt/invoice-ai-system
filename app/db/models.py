@@ -5,6 +5,10 @@ from sqlalchemy.orm import relationship
 
 from .database import Base
 
+from sqlalchemy import Column, Boolean
+
+used_fallback = Column(Boolean, default=False)
+
 
 # =========================
 # NEW STRUCTURE
@@ -87,6 +91,8 @@ class ReviewAction(Base):
 # =========================
 # TEMPORARY BACKWARD COMPATIBILITY
 # =========================
+from sqlalchemy import Boolean  # ✅ تأكد من إضافته بالأعلى
+
 class InvoiceRecord(Base):
     __tablename__ = "invoice_records"
 
@@ -105,3 +111,5 @@ class InvoiceRecord(Base):
     status = Column(String)
 
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    used_fallback = Column(Boolean, default=False)  # ✅ هذا هو التعديل

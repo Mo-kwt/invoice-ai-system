@@ -1063,6 +1063,10 @@ def enrich_normalized_invoice_data(
     raw_invoice_data: dict,
     normalized_invoice_data: dict,
 ):
+    print(">>> ENTER enrich_normalized_invoice_data")
+    print("RAW DATE:", raw_invoice_data.get("invoice_date"))
+    print("NORMALIZED DATE BEFORE:", normalized_invoice_data.get("invoice_date"))
+
     result = deepcopy(normalized_invoice_data)
 
     current_vendor_name = result.get("vendor_name")
@@ -1086,9 +1090,50 @@ def enrich_normalized_invoice_data(
     if not result.get("currency"):
         result["currency"] = find_currency_in_text(extracted_text)
 
+    field_evidence = raw_invoice_data.get("field_evidence") or {}
+    fallback_decision_debug = raw_invoice_data.get("fallback_decision_debug") or {}
+    invoice_date_candidates_count = field_evidence.get("invoice_date_candidates_count")
+    suggested_invoice_date = field_evidence.get("suggested_invoice_date")
+    suggested_invoice_date_confidence = field_evidence.get("suggested_invoice_date_confidence")
+    arabic_count = fallback_decision_debug.get("arabic_count", 0)
+
     raw_date = raw_invoice_data.get("invoice_date")
     if raw_date:
-        result["invoice_date"] = normalize_date(raw_date)
+        normalized_raw_date = None
+        raw_date_text = normalize_digits(str(raw_date)).strip()
+
+        no_date_evidence = (
+            invoice_date_candidates_count == 0
+            and not suggested_invoice_date
+            and suggested_invoice_date_confidence == "low"
+        )
+
+        short_slash_date_match = re.fullmatch(
+            r"(\d{1,2})/(\d{1,2})/(\d{2,4})",
+            raw_date_text,
+        )
+
+        arabic_short_slash_override = False
+        if short_slash_date_match and arabic_count > 50:
+            day = int(short_slash_date_match.group(1))
+            month = int(short_slash_date_match.group(2))
+            year = int(short_slash_date_match.group(3))
+
+            if year < 100:
+                year += 2000
+
+            if 1 <= day <= 31 and 1 <= month <= 12:
+                normalized_raw_date = f"{year:04d}-{month:02d}-{day:02d}"
+                arabic_short_slash_override = True
+
+        if no_date_evidence and not arabic_short_slash_override:
+            result["invoice_date"] = None
+        else:
+            if not normalized_raw_date:
+                normalized_raw_date = normalize_date(raw_date)
+
+            if normalized_raw_date:
+                result["invoice_date"] = normalized_raw_date
 
     if not result.get("invoice_date"):
         result["invoice_date"] = find_date_in_text(extracted_text)
@@ -1100,5 +1145,7 @@ def enrich_normalized_invoice_data(
         result["total"] = find_total_in_text(extracted_text)
 
     result = remove_empty_items(result)
+
+    print("FINAL DATE AFTER ENRICH:", result.get("invoice_date"))
 
     return result

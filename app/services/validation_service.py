@@ -182,6 +182,27 @@ def validate_invoice_data(invoice: InvoiceData) -> ValidationResult:
 
     is_valid = critical_missing == 0
 
+    # 6.5) تنظيف أسباب المراجعة لتطابق الحالة النهائية بعد المعالجة اللاحقة
+    if _has_meaningful_text(invoice.invoice_date):
+        review_reasons = [
+            reason for reason in review_reasons
+            if reason not in {"invoice_date_missing", "invoice_date_low_confidence"}
+        ]
+        missing_fields = [
+            field for field in missing_fields
+            if field != "invoice_date"
+        ]
+
+    if _has_meaningful_text(invoice.invoice_number):
+        review_reasons = [
+            reason for reason in review_reasons
+            if reason not in {"invoice_number_missing", "invoice_number_low_confidence"}
+        ]
+        missing_fields = [
+            field for field in missing_fields
+            if field != "invoice_number"
+        ]
+
     # 7) منطق المراجعة
     # warnings البسيطة وحدها لا تفرض المراجعة دائمًا
     needs_review = (

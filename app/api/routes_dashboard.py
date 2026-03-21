@@ -284,6 +284,8 @@ def _build_dashboard_row(record):
         "currency": source_data.get("currency"),
         "warnings_count": warnings_count,
         "review_reasons_count": review_reasons_count,
+
+        "used_fallback": record.used_fallback,  # ✅ هذا هو الحل
     }
 
 
@@ -422,6 +424,24 @@ def dashboard_invoice_detail(request: Request, record_id: int):
             raise HTTPException(status_code=404, detail="Record not found")
 
         context = _build_detail_context(record)
+
+        data = context.get("data", {}) or {}
+        review_reasons = list(context.get("review_reasons", []) or [])
+
+        if data.get("invoice_date"):
+            review_reasons = [
+                reason for reason in review_reasons
+                if reason not in {"invoice_date_missing", "invoice_date_low_confidence"}
+            ]
+
+        if data.get("invoice_number"):
+            review_reasons = [
+                reason for reason in review_reasons
+                if reason not in {"invoice_number_missing", "invoice_number_low_confidence"}
+            ]
+
+        record.review_reasons = review_reasons
+        context["review_reasons"] = review_reasons
         context["request"] = request
         return templates.TemplateResponse("invoice_detail.html", context)
     finally:

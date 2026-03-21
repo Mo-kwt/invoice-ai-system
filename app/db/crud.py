@@ -16,6 +16,14 @@ def create_invoice_record(
     document_id: int | None = None,
     run_id: int | None = None,
 ) -> InvoiceRecord:
+    used_fallback = (
+        invoice_data.get("debug_info", {}).get("used_fallback")
+        if isinstance(invoice_data, dict)
+        else None
+    )
+
+    print("CREATE_RECORD PARAM used_fallback:", used_fallback)
+
     record = InvoiceRecord(
         document_id=document_id,
         run_id=run_id,
@@ -25,10 +33,17 @@ def create_invoice_record(
         invoice_data_json=json.dumps(invoice_data, ensure_ascii=False),
         validation_result_json=json.dumps(validation_result, ensure_ascii=False),
         status=status,
+        used_fallback=used_fallback,
     )
+
+    print("BEFORE COMMIT used_fallback:", getattr(record, "used_fallback", "FIELD_NOT_PRESENT"))
+
     db.add(record)
     db.commit()
     db.refresh(record)
+
+    print("AFTER SAVE used_fallback:", record.used_fallback)
+
     return record
 
 
