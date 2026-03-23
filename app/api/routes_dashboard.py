@@ -415,6 +415,17 @@ def dashboard_upload_invoice(file: UploadFile = File(...)):
         db.close()
 
 
+
+def _should_autofill_field(field_name: str, field_review_flags: list[str]) -> bool:
+    risky_flags = {
+        f"{field_name}_low_confidence",
+        f"{field_name}_ambiguous",
+        f"{field_name}_differs_from_top_candidate",
+        f"{field_name}_missing_but_candidate_exists",
+    }
+    return not any(flag in risky_flags for flag in (field_review_flags or []))
+
+
 @router.get("/dashboard/invoices/{record_id}", response_class=HTMLResponse)
 def dashboard_invoice_detail(request: Request, record_id: int):
     db = SessionLocal()
@@ -427,21 +438,37 @@ def dashboard_invoice_detail(request: Request, record_id: int):
 
         data = context.get("data", {}) or {}
         review_reasons = list(context.get("review_reasons", []) or [])
+        field_review_flags = list(context.get("field_review_flags", []) or [])
 
         if data.get("invoice_date"):
             review_reasons = [
                 reason for reason in review_reasons
-                if reason not in {"invoice_date_missing", "invoice_date_low_confidence"}
+                if reason != "invoice_date_missing"
             ]
 
         if data.get("invoice_number"):
             review_reasons = [
                 reason for reason in review_reasons
-                if reason not in {"invoice_number_missing", "invoice_number_low_confidence"}
+                if reason != "invoice_number_missing"
             ]
+
+        manual_form_data = dict(data)
+
+        if not _should_autofill_field("invoice_number", field_review_flags):
+            manual_form_data["invoice_number"] = ""
+
+        if not _should_autofill_field("invoice_date", field_review_flags):
+            manual_form_data["invoice_date"] = ""
+
+        if not _should_autofill_field("total", field_review_flags):
+            manual_form_data["total"] = ""
+
+        if not _should_autofill_field("vendor_name", field_review_flags):
+            manual_form_data["vendor_name"] = ""
 
         record.review_reasons = review_reasons
         context["review_reasons"] = review_reasons
+        context["manual_form_data"] = manual_form_data
         context["request"] = request
         return templates.TemplateResponse("invoice_detail.html", context)
     finally:

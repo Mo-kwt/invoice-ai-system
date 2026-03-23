@@ -214,6 +214,7 @@
 
     .review-layout > .stack {
       direction: rtl;
+      min-width: 0;
     }
 
     @media (max-width: 1100px) {
@@ -233,6 +234,7 @@
       display: flex;
       flex-direction: column;
       gap: 20px;
+      min-width: 0;
     }
 
     .section {
@@ -241,6 +243,7 @@
       border-radius: 20px;
       box-shadow: var(--shadow);
       padding: 22px;
+      min-width: 0;
     }
 
     .section h2 {
@@ -563,10 +566,12 @@
     }
 
     .preview-card {
-      flex: 1;
+      flex: 1 1 auto;
       display: flex;
       flex-direction: column;
       gap: 14px;
+      min-width: 0;
+      min-height: 0;
     }
 
     .preview-controls {
@@ -599,31 +604,64 @@
       background: #fff;
       padding: 8px;
       direction: ltr;
-      flex: 1;
-      min-height: 650px;
-      max-height: none;
+      flex: 1 1 0;
+      min-height: 420px;
+      height: auto;
       overflow: auto;
+      position: relative;
+      min-width: 0;
+      width: 100%;
+      max-width: 100%;
+      overscroll-behavior: contain;
     }
 
     .preview-image-wrap {
       display: flex;
       align-items: center;
       justify-content: center;
+      min-width: 100%;
       min-height: 100%;
+      width: 100%;
+      height: 100%;
       padding: 12px;
-      direction: rtl;
+      direction: ltr;
+      position: relative;
+      cursor: default;
+    }
+
+    .preview-image-wrap.is-pannable {
+      cursor: grab;
+    }
+
+    .preview-image-wrap.is-pannable:active,
+    .preview-image-wrap.is-dragging {
+      cursor: grabbing;
+    }
+
+    .preview-canvas {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      max-width: none;
+      max-height: none;
     }
 
     .preview-image {
-      max-width: 100%;
       width: auto;
       height: auto;
+      max-width: none;
+      max-height: none;
       display: block;
       border-radius: 12px;
       background: #f8fafc;
       transform-origin: center center;
-      transition: transform 0.18s ease;
+      transition: width 0.18s ease, height 0.18s ease, transform 0.18s ease;
       box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+      user-select: none;
+      -webkit-user-drag: none;
+      flex: 0 0 auto;
     }
 
     .preview-meta {
@@ -633,18 +671,16 @@
     }
 
     .sticky-preview {
-      position: sticky;
-      top: 16px;
+      position: static;
       height: 100%;
       display: flex;
       flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      align-self: stretch;
     }
 
     @media (max-width: 1100px) {
-      .sticky-preview {
-        position: static;
-      }
-
       .preview-frame {
         min-height: 520px;
       }
@@ -693,7 +729,40 @@
       {% endfor %}
     {% endif %}
 
+    {% set vendor_name_missing = not data.get('vendor_name') %}
+    {% set vendor_name_review = false %}
+    {% set vendor_name_needs_review = vendor_name_missing or vendor_name_review %}
+
+    {% set invoice_number_missing = not data.get('invoice_number') %}
+    {% set invoice_number_review =
+      'invoice_number_low_confidence' in review_reasons or
+      'invoice_number_differs_from_top_candidate' in review_reasons
+    %}
+    {% set invoice_number_needs_review = invoice_number_missing or invoice_number_review %}
+
     {% set invoice_date_missing = not data.get('invoice_date') %}
+    {% set invoice_date_review = 'invoice_date_low_confidence' in review_reasons %}
+    {% set invoice_date_needs_review = invoice_date_missing or invoice_date_review %}
+
+    {% set currency_missing = not data.get('currency') %}
+    {% set currency_review = false %}
+    {% set currency_needs_review = currency_missing or currency_review %}
+
+    {% set subtotal_missing = data.get('subtotal') is none %}
+    {% set subtotal_review = false %}
+    {% set subtotal_needs_review = subtotal_missing or subtotal_review %}
+
+    {% set tax_missing = data.get('tax') is none %}
+    {% set tax_review = false %}
+    {% set tax_needs_review = tax_missing or tax_review %}
+
+    {% set discount_missing = data.get('discount') is none %}
+    {% set discount_review = false %}
+    {% set discount_needs_review = discount_missing or discount_review %}
+
+    {% set total_missing = data.get('total') is none %}
+    {% set total_review = 'total_low_confidence_due_to_weak_ocr' in review_reasons %}
+    {% set total_needs_review = total_missing or total_review %}
 
     {% if validation_result.get("needs_review") and (not data.get("invoice_date") or not data.get("invoice_number")) %}
       <div class="decision-box decision-review" style="margin-bottom: 20px;">
@@ -752,23 +821,33 @@
           <div class="value">{{ validation_result.get("confidence_score", "-") }}</div>
         </div>
 
-        <div class="hero-stat">
-          <div class="label">رقم الفاتورة</div>
+        <div class="hero-stat {% if invoice_number_needs_review %}info-card-warning{% endif %}">
+          <div class="label">
+            رقم الفاتورة
+            {% if invoice_number_needs_review %}
+              <span class="inline-flag">تحقق</span>
+            {% endif %}
+          </div>
           <div class="value">{{ data.get("invoice_number") or "مفقود" }}</div>
         </div>
 
-        <div class="hero-stat {% if invoice_date_missing %}info-card-warning{% endif %}">
+        <div class="hero-stat {% if invoice_date_needs_review %}info-card-warning{% endif %}">
           <div class="label">
             التاريخ
-            {% if invoice_date_missing %}
+            {% if invoice_date_needs_review %}
               <span class="inline-flag">تحقق</span>
             {% endif %}
           </div>
           <div class="value">{{ data.get("invoice_date") or "مفقود" }}</div>
         </div>
 
-        <div class="hero-stat">
-          <div class="label">الإجمالي</div>
+        <div class="hero-stat {% if total_needs_review %}info-card-warning{% endif %}">
+          <div class="label">
+            الإجمالي
+            {% if total_needs_review %}
+              <span class="inline-flag">تحقق</span>
+            {% endif %}
+          </div>
           <div class="value">
             {% if data.get("total") is not none %}
               {{ data.get("total") }} {{ data.get("currency") or "" }}
@@ -798,8 +877,10 @@
               </div>
 
               <div class="preview-frame" id="previewFrame">
-                <div class="preview-image-wrap">
-                  <img id="invoiceImage" class="preview-image" src="/{{ rendered_image_path }}" alt="معاينة الفاتورة">
+                <div class="preview-image-wrap" id="previewImageWrap">
+                  <div class="preview-canvas" id="previewCanvas">
+                    <img id="invoiceImage" class="preview-image" src="/{{ rendered_image_path }}" alt="معاينة الفاتورة">
+                  </div>
                 </div>
               </div>
 
@@ -821,70 +902,87 @@
           </div>
 
           <div class="info-grid">
-            <div class="info-card {% if not data.get('vendor_name') %}info-card-warning{% endif %}">
+            <div class="info-card {% if vendor_name_needs_review %}info-card-warning{% endif %}">
               <div class="label">
                 اسم الجهة
-                {% if not data.get('vendor_name') %}
-                  <span class="inline-flag">يحتاج مراجعة</span>
+                {% if vendor_name_needs_review %}
+                  <span class="inline-flag">تحقق</span>
                 {% endif %}
               </div>
               <div class="value">{{ data.get("vendor_name") or "مفقود" }}</div>
             </div>
 
-            {% set invoice_suggested = field_evidence.get("suggested_invoice_number") %}
-            {% set invoice_confidence = field_evidence.get("suggested_invoice_number_confidence", "low") %}
-
-            <div class="info-card {% if not data.get('invoice_number') or (invoice_suggested and invoice_suggested != data.get('invoice_number') and invoice_confidence == 'high') %}info-card-warning{% endif %}">
+            <div class="info-card {% if invoice_number_needs_review %}info-card-warning{% endif %}">
               <div class="label">
                 رقم الفاتورة
-                {% if not data.get('invoice_number') or (invoice_suggested and invoice_suggested != data.get('invoice_number') and invoice_confidence == 'high') %}
-                  <span class="inline-flag">يحتاج مراجعة</span>
+                {% if invoice_number_needs_review %}
+                  <span class="inline-flag">تحقق</span>
                 {% endif %}
               </div>
               <div class="value">{{ data.get("invoice_number") or "مفقود" }}</div>
             </div>
 
-            <div class="info-card {% if invoice_date_missing %}info-card-warning{% endif %}">
+            <div class="info-card {% if invoice_date_needs_review %}info-card-warning{% endif %}">
               <div class="label">
                 التاريخ
-                {% if invoice_date_missing %}
-                  <span class="inline-flag">يحتاج مراجعة</span>
+                {% if invoice_date_needs_review %}
+                  <span class="inline-flag">تحقق</span>
                 {% endif %}
               </div>
               <div class="value">{{ data.get("invoice_date") or "مفقود" }}</div>
             </div>
 
-            <div class="info-card">
-              <div class="label">العملة</div>
+            <div class="info-card {% if currency_needs_review %}info-card-warning{% endif %}">
+              <div class="label">
+                العملة
+                {% if currency_needs_review %}
+                  <span class="inline-flag">تحقق</span>
+                {% endif %}
+              </div>
               <div class="value">{{ data.get("currency") or "مفقود" }}</div>
             </div>
 
-            <div class="info-card">
-              <div class="label">الإجمالي الفرعي</div>
+            <div class="info-card {% if subtotal_needs_review %}info-card-warning{% endif %}">
+              <div class="label">
+                الإجمالي الفرعي
+                {% if subtotal_needs_review %}
+                  <span class="inline-flag">تحقق</span>
+                {% endif %}
+              </div>
               <div class="value">
                 {% if data.get("subtotal") is not none %}{{ data.get("subtotal") }}{% else %}مفقود{% endif %}
               </div>
             </div>
 
-            <div class="info-card">
-              <div class="label">الضريبة</div>
+            <div class="info-card {% if tax_needs_review %}info-card-warning{% endif %}">
+              <div class="label">
+                الضريبة
+                {% if tax_needs_review %}
+                  <span class="inline-flag">تحقق</span>
+                {% endif %}
+              </div>
               <div class="value">
                 {% if data.get("tax") is not none %}{{ data.get("tax") }}{% else %}مفقود{% endif %}
               </div>
             </div>
 
-            <div class="info-card">
-              <div class="label">الخصم</div>
+            <div class="info-card {% if discount_needs_review %}info-card-warning{% endif %}">
+              <div class="label">
+                الخصم
+                {% if discount_needs_review %}
+                  <span class="inline-flag">تحقق</span>
+                {% endif %}
+              </div>
               <div class="value">
                 {% if data.get("discount") is not none %}{{ data.get("discount") }}{% else %}مفقود{% endif %}
               </div>
             </div>
 
-            <div class="info-card {% if data.get('total') is none or 'total_low_confidence_due_to_weak_ocr' in review_reasons %}info-card-warning{% endif %}">
+            <div class="info-card {% if total_needs_review %}info-card-warning{% endif %}">
               <div class="label">
                 الإجمالي
-                {% if data.get('total') is none or 'total_low_confidence_due_to_weak_ocr' in review_reasons %}
-                  <span class="inline-flag">يحتاج مراجعة</span>
+                {% if total_needs_review %}
+                  <span class="inline-flag">تحقق</span>
                 {% endif %}
               </div>
               <div class="value">
@@ -943,56 +1041,127 @@
 
           <form method="post" action="/dashboard/invoices/{{ record.id }}/update">
             <div class="form-grid">
+
               <div class="field">
-                <label>اسم الجهة</label>
-                <input type="text" name="vendor_name" value="{{ data.get('vendor_name') or '' }}">
+                <label>
+                  اسم الجهة
+                  {% if vendor_name_needs_review %}
+                    <span class="inline-flag">تحقق</span>
+                  {% endif %}
+                </label>
+                <input
+                  type="text"
+                  name="vendor_name"
+                  value="{{ manual_form_data.get('vendor_name') or '' }}"
+                  class="{% if vendor_name_needs_review %}input-warning{% endif %}"
+                >
               </div>
 
               <div class="field">
-                <label>رقم الفاتورة</label>
-                <input type="text" name="invoice_number" value="{{ data.get('invoice_number') or '' }}">
+                <label>
+                  رقم الفاتورة
+                  {% if invoice_number_needs_review %}
+                    <span class="inline-flag">تحقق</span>
+                  {% endif %}
+                </label>
+                <input
+                  type="text"
+                  name="invoice_number"
+                  value="{{ manual_form_data.get('invoice_number') or '' }}"
+                  class="{% if invoice_number_needs_review %}input-warning{% endif %}"
+                >
               </div>
 
               <div class="field">
                 <label>
                   التاريخ
-                  {% if invoice_date_missing %}
-                    <span class="inline-flag">يحتاج مراجعة</span>
+                  {% if invoice_date_needs_review %}
+                    <span class="inline-flag">تحقق</span>
                   {% endif %}
                 </label>
-
                 <input
                   type="text"
                   name="invoice_date"
-                  value="{{ data.get('invoice_date') or '' }}"
-                  class="{% if invoice_date_missing %}input-warning{% endif %}"
+                  value="{{ manual_form_data.get('invoice_date') or '' }}"
+                  class="{% if invoice_date_needs_review %}input-warning{% endif %}"
                 >
               </div>
 
               <div class="field">
-                <label>الإجمالي الفرعي</label>
-                <input type="text" name="subtotal" value="{{ data.get('subtotal') if data.get('subtotal') is not none else '' }}">
+                <label>
+                  الإجمالي الفرعي
+                  {% if subtotal_needs_review %}
+                    <span class="inline-flag">تحقق</span>
+                  {% endif %}
+                </label>
+                <input
+                  type="text"
+                  name="subtotal"
+                  value="{{ manual_form_data.get('subtotal') if manual_form_data.get('subtotal') is not none else '' }}"
+                  class="{% if subtotal_needs_review %}input-warning{% endif %}"
+                >
               </div>
 
               <div class="field">
-                <label>الضريبة</label>
-                <input type="text" name="tax" value="{{ data.get('tax') if data.get('tax') is not none else '' }}">
+                <label>
+                  الضريبة
+                  {% if tax_needs_review %}
+                    <span class="inline-flag">تحقق</span>
+                  {% endif %}
+                </label>
+                <input
+                  type="text"
+                  name="tax"
+                  value="{{ manual_form_data.get('tax') if manual_form_data.get('tax') is not none else '' }}"
+                  class="{% if tax_needs_review %}input-warning{% endif %}"
+                >
               </div>
 
               <div class="field">
-                <label>الخصم</label>
-                <input type="text" name="discount" value="{{ data.get('discount') if data.get('discount') is not none else '' }}">
+                <label>
+                  الخصم
+                  {% if discount_needs_review %}
+                    <span class="inline-flag">تحقق</span>
+                  {% endif %}
+                </label>
+                <input
+                  type="text"
+                  name="discount"
+                  value="{{ manual_form_data.get('discount') if manual_form_data.get('discount') is not none else '' }}"
+                  class="{% if discount_needs_review %}input-warning{% endif %}"
+                >
               </div>
 
               <div class="field">
-                <label>الإجمالي</label>
-                <input type="text" name="total" value="{{ data.get('total') if data.get('total') is not none else '' }}">
+                <label>
+                  الإجمالي
+                  {% if total_needs_review %}
+                    <span class="inline-flag">تحقق</span>
+                  {% endif %}
+                </label>
+                <input
+                  type="text"
+                  name="total"
+                  value="{{ manual_form_data.get('total') if manual_form_data.get('total') is not none else '' }}"
+                  class="{% if total_needs_review %}input-warning{% endif %}"
+                >
               </div>
 
               <div class="field">
-                <label>العملة</label>
-                <input type="text" name="currency" value="{{ data.get('currency') or '' }}">
+                <label>
+                  العملة
+                  {% if currency_needs_review %}
+                    <span class="inline-flag">تحقق</span>
+                  {% endif %}
+                </label>
+                <input
+                  type="text"
+                  name="currency"
+                  value="{{ manual_form_data.get('currency') or '' }}"
+                  class="{% if currency_needs_review %}input-warning{% endif %}"
+                >
               </div>
+
             </div>
 
             <div class="form-actions">
@@ -1219,38 +1388,176 @@
   </div>
 
   <script>
-    let scale = 1.15;
+    let zoomLevel = 1;
     let rotation = 0;
+    let fitScale = 1;
 
-    function applyTransform() {
-      const img = document.getElementById("invoiceImage");
-      if (!img) return;
-      img.style.transform = "scale(" + scale + ") rotate(" + rotation + "deg)";
+    function getPreviewElements() {
+      return {
+        frame: document.getElementById("previewFrame"),
+        wrap: document.getElementById("previewImageWrap"),
+        canvas: document.getElementById("previewCanvas"),
+        img: document.getElementById("invoiceImage")
+      };
+    }
+
+    function getRotatedBounds(width, height, angle) {
+      const radians = (angle % 360) * Math.PI / 180;
+      const sin = Math.abs(Math.sin(radians));
+      const cos = Math.abs(Math.cos(radians));
+      return {
+        width: (width * cos) + (height * sin),
+        height: (width * sin) + (height * cos)
+      };
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    function measureFitScale() {
+      const { frame, img } = getPreviewElements();
+      if (!frame || !img) return 1;
+
+      const naturalWidth = img.naturalWidth || img.width || 1;
+      const naturalHeight = img.naturalHeight || img.height || 1;
+      const availableWidth = Math.max(frame.clientWidth - 24, 1);
+      const availableHeight = Math.max(frame.clientHeight - 24, 1);
+
+      fitScale = Math.min(1, availableWidth / naturalWidth, availableHeight / naturalHeight);
+      return fitScale;
+    }
+
+    function applyTransform(options) {
+      const { preserveViewport = false } = options || {};
+      const { frame, wrap, canvas, img } = getPreviewElements();
+      if (!frame || !wrap || !canvas || !img) return;
+
+      const previousScrollWidth = wrap.scrollWidth || wrap.offsetWidth || 1;
+      const previousScrollHeight = wrap.scrollHeight || wrap.offsetHeight || 1;
+      const currentCenterX = frame.scrollLeft + (frame.clientWidth / 2);
+      const currentCenterY = frame.scrollTop + (frame.clientHeight / 2);
+      const centerRatioX = currentCenterX / previousScrollWidth;
+      const centerRatioY = currentCenterY / previousScrollHeight;
+
+      const naturalWidth = img.naturalWidth || img.width || 1;
+      const naturalHeight = img.naturalHeight || img.height || 1;
+      const effectiveScale = measureFitScale() * zoomLevel;
+      const renderedWidth = naturalWidth * effectiveScale;
+      const renderedHeight = naturalHeight * effectiveScale;
+      const bounds = getRotatedBounds(renderedWidth, renderedHeight, rotation);
+
+      img.style.width = renderedWidth + "px";
+      img.style.height = renderedHeight + "px";
+      img.style.transform = "rotate(" + rotation + "deg)";
+
+      canvas.style.width = Math.ceil(bounds.width) + "px";
+      canvas.style.height = Math.ceil(bounds.height) + "px";
+
+      const wrapWidth = Math.max(frame.clientWidth - 16, Math.ceil(bounds.width + 24));
+      const wrapHeight = Math.max(frame.clientHeight - 16, Math.ceil(bounds.height + 24));
+      wrap.style.width = wrapWidth + "px";
+      wrap.style.height = wrapHeight + "px";
+
+      const pannable = wrapWidth > frame.clientWidth || wrapHeight > frame.clientHeight || zoomLevel > 1.001;
+      wrap.classList.toggle("is-pannable", pannable);
+
+      if (preserveViewport) {
+        const nextCenterX = centerRatioX * wrapWidth;
+        const nextCenterY = centerRatioY * wrapHeight;
+        frame.scrollLeft = clamp(nextCenterX - (frame.clientWidth / 2), 0, Math.max(0, wrapWidth - frame.clientWidth));
+        frame.scrollTop = clamp(nextCenterY - (frame.clientHeight / 2), 0, Math.max(0, wrapHeight - frame.clientHeight));
+      } else {
+        frame.scrollLeft = Math.max(0, (wrapWidth - frame.clientWidth) / 2);
+        frame.scrollTop = 0;
+      }
     }
 
     function zoomIn() {
-      scale += 0.2;
-      applyTransform();
+      zoomLevel += 0.2;
+      applyTransform({ preserveViewport: true });
     }
 
     function zoomOut() {
-      scale = Math.max(0.4, scale - 0.2);
-      applyTransform();
+      zoomLevel = Math.max(0.4, zoomLevel - 0.2);
+      applyTransform({ preserveViewport: true });
     }
 
     function rotateImage() {
       rotation = (rotation + 90) % 360;
-      applyTransform();
+      applyTransform({ preserveViewport: true });
     }
 
     function resetImage() {
-      scale = 1.15;
+      zoomLevel = 1;
       rotation = 0;
-      applyTransform();
+      applyTransform({ preserveViewport: false });
+    }
+
+    function setupPreviewPanning() {
+      const { frame, wrap, img } = getPreviewElements();
+      if (!frame || !wrap || !img || wrap.dataset.panBound === "true") return;
+
+      let isDragging = false;
+      let startX = 0;
+      let startY = 0;
+      let startScrollLeft = 0;
+      let startScrollTop = 0;
+
+      wrap.addEventListener("mousedown", function (event) {
+        if (event.button !== 0) return;
+        if (!wrap.classList.contains("is-pannable")) return;
+
+        isDragging = true;
+        startX = event.clientX;
+        startY = event.clientY;
+        startScrollLeft = frame.scrollLeft;
+        startScrollTop = frame.scrollTop;
+        wrap.classList.add("is-dragging");
+        event.preventDefault();
+      });
+
+      window.addEventListener("mousemove", function (event) {
+        if (!isDragging) return;
+        frame.scrollLeft = startScrollLeft - (event.clientX - startX);
+        frame.scrollTop = startScrollTop - (event.clientY - startY);
+      });
+
+      window.addEventListener("mouseup", function () {
+        if (!isDragging) return;
+        isDragging = false;
+        wrap.classList.remove("is-dragging");
+      });
+
+      img.addEventListener("dragstart", function (event) {
+        event.preventDefault();
+      });
+
+      wrap.dataset.panBound = "true";
+    }
+
+    function initializePreview() {
+      const { img } = getPreviewElements();
+      if (!img) return;
+
+      function ready() {
+        setupPreviewPanning();
+        resetImage();
+      }
+
+      if (img.complete) {
+        ready();
+      } else {
+        img.addEventListener("load", ready, { once: true });
+      }
+
+      window.addEventListener("resize", function () {
+        applyTransform({ preserveViewport: true });
+      });
     }
 
     window.addEventListener("load", function () {
-      applyTransform();
+      initializePreview();
     });
   </script>
 </body>

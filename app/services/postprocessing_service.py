@@ -235,8 +235,8 @@ def collect_invoice_number_candidates(text: str):
 
     for label_type, label_pattern in patterns:
         pattern = (
-            rf"(?P<label>{label_pattern})\s*[:#\-]?\s*"
-            rf"(?P<value>[A-Z0-9][A-Z0-9\-\/]{{1,30}})"
+            rf"(?P<label>\b(?:{label_pattern})\b)\s*[:#\-]?\s*"
+            rf"(?P<value>[A-Z0-9][A-Z0-9\-\/]{{1,40}})(?=\s|$|[.,;])"
         )
         for match in re.finditer(pattern, text, flags=re.IGNORECASE):
             raw_value = _normalize_candidate_value(match.group("value"))

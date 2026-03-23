@@ -427,8 +427,19 @@ def _truncate_on_stop_tokens(value: str, stop_tokens: list[str]) -> str:
 
 
 def _is_probable_phone(value: str) -> bool:
-    digits = re.sub(r"\D", "", value or "")
-    return 7 <= len(digits) <= 12 and ("+" in (value or "") or len(digits) >= 8)
+    raw = value or ""
+    digits = re.sub(r"\D", "", raw)
+
+    if not (7 <= len(digits) <= 12):
+        return False
+
+    has_alpha = any(ch.isalpha() for ch in raw)
+    has_invoice_style_separator = bool(re.search(r"[-_/]", raw))
+
+    if has_alpha or has_invoice_style_separator:
+        return False
+
+    return ("+" in raw) or raw.strip().isdigit()
 
 
 def _is_probable_money(value: str) -> bool:
@@ -547,6 +558,11 @@ def _score_invoice_number_candidate(value: str, line: str, indicator_hit: bool) 
 
 def _extract_invoice_number_candidates(text: str) -> list[dict]:
     lines = _split_lines_for_evidence(text)
+
+    print("\n===== DEBUG INVOICE NUMBER EXTRACTION =====")
+    print("TEXT:", repr(text))
+    print("LINES:", lines)
+
     candidates: list[dict] = []
 
     indicators = [
@@ -568,15 +584,22 @@ def _extract_invoice_number_candidates(text: str) -> list[dict]:
     ]
 
     for line in lines:
+        print("\n--- LINE ---")
+        print(repr(line))
+
         line_lower = line.lower()
 
         for indicator in indicators:
             if indicator.lower() in line_lower:
+                print("INDICATOR MATCH:", indicator)
+
                 value = _extract_candidate_after_indicator(
                     line,
                     indicator,
                     stop_tokens=INVOICE_NUMBER_STOP_TOKENS,
                 )
+                print("EXTRACTED VALUE:", repr(value))
+
                 if value and _looks_like_invoice_number_candidate(value):
                     candidates.append(
                         {
@@ -591,8 +614,15 @@ def _extract_invoice_number_candidates(text: str) -> list[dict]:
             r"\b(?:[A-Za-z]{1,6}[-_/]?\d{2,}[A-Za-z0-9\-_/]*|\d{6,})\b",
             line,
         )
+        print("GENERIC MATCHES:", generic_matches)
+
         for match in generic_matches:
             cleaned = _truncate_on_stop_tokens(match, INVOICE_NUMBER_STOP_TOKENS)
+
+            # ✅ NEW: ignore numbers inside table-heavy lines
+            if any(token in line.lower() for token in ["qty", "amount", "total", "description", "السعر", "الكمية"]):
+                continue
+
             if cleaned and _looks_like_invoice_number_candidate(cleaned):
                 candidates.append(
                     {
@@ -813,6 +843,12 @@ def _build_field_evidence(
     normalized_invoice_data: dict,
 ) -> dict:
     invoice_number_candidates = _extract_invoice_number_candidates(text)
+    
+    print("\n===== DEBUG FIELD EVIDENCE =====")
+    print("INVOICE NUMBER CANDIDATES:", invoice_number_candidates)
+    print("SUGGESTED INVOICE NUMBER:", invoice_number_candidates[0]["value"] if invoice_number_candidates else None)
+    print("EXTRACTED NORMALIZED INVOICE NUMBER:", (normalized_invoice_data.get("invoice_number") or "").strip())
+    
     invoice_date_candidates = _extract_invoice_date_candidates(text)
     items_info = _detect_items_table(text)
 
@@ -839,6 +875,8 @@ def _build_field_evidence(
 
     field_review_flags = []
 
+    print("FIELD REVIEW FLAGS:", field_review_flags)
+    
     normalized_candidate_values = {
         (candidate.get("value") or "").strip()
         for candidate in invoice_number_candidates
@@ -862,7 +900,14 @@ def _build_field_evidence(
         ):
             field_review_flags.append("invoice_number_differs_from_top_candidate")
 
-        if invoice_number_confidence == "low" and not extracted_invoice_number_matches_candidate:
+        if (
+            invoice_number_confidence == "low"
+            and not extracted_invoice_number_matches_candidate
+            and not (
+                len(invoice_number_candidates) == 1
+                and extracted_invoice_number_matches_candidate
+            )
+        ):
             field_review_flags.append("invoice_number_low_confidence")
 
         strong_distinct_candidates = {
